@@ -5,11 +5,93 @@ command once, in Temper, and get typed options, subcommands, generated
 help, clear errors with suggestions, and shell completions, with the same
 behavior in C++, C#, Java, JavaScript, Lua, Python, and Rust.
 
-**Status: design.** Nothing to use yet; see [docs/design.md](docs/design.md).
-Once it ships, it stays beta until Temper's translations reach 1.0.
+**Status: early.** Options, flags, positional arguments, environment
+fallbacks, help, and errors work; subcommands and completions are next.
+See [docs/design.md](docs/design.md). It stays beta until Temper's
+translations reach 1.0, and the API may change.
+
+## Example
+
+In Temper:
+
+```temper
+let cli = new Command({ name: "frob", about: "Frobnicate files.", version: "1.0.0" });
+let verbose = cli.count({ name: "verbose", short: "v", help: "Say more." });
+let level = cli.optionOr(ints, 3, { name: "level", short: "l", help: "How hard.", env: "FROB_LEVEL" });
+let mode = cli.option(choices(["fast", "slow"]), { name: "mode", help: "How to go about it." });
+let files = cli.positionals(strings, { name: "FILE", min: 1, help: "Files to frobnicate." });
+
+// Each value has its handle's type, checked when the program compiles.
+let args = cli.parse(["-vv", "--level=5", "a.txt", "b.txt"]) as Args orelse panic();
+args.get(verbose); // 2, an Int
+args.get(level);   // 5, an Int (3 by default, or from FROB_LEVEL)
+args.get(mode);    // null, a String?
+args.get(files);   // ["a.txt", "b.txt"], a List<String>
+
+// Mistakes are values, not exceptions, with a suggestion when there's
+// a near miss.
+let error = cli.parse(["--levle", "5", "a.txt"]) as ArgError orelse panic();
+error.text();
+// frob: unknown option --levle; did you mean --level?
+// Usage: frob [OPTIONS] FILE...
+// Try 'frob --help' for more information.
+
+// --help gives the help, wrapped to the width given (80 by default).
+(cli.parse(["--help"]) as Output orelse panic()).text();
+// Frobnicate files.
+//
+// Usage: frob [OPTIONS] FILE...
+//
+// Arguments:
+//   FILE...              Files to frobnicate.
+//
+// Options:
+//   -v, --verbose        Say more. [repeatable]
+//   -l, --level <LEVEL>  How hard. [default: 3] [env: FROB_LEVEL]
+//       --mode <MODE>    How to go about it. [choices: fast, slow]
+//   -h, --help           Show this help and exit.
+//       --version        Show the version and exit.
+```
+
+A program usually matches on the result: `Args` to run, `Output` to
+print and exit with status 0, and `ArgError` to print to standard error
+and exit with status 2. Parsing touches nothing outside: the program
+passes the arguments and, for environment variables, an `Environment`.
+The [design](docs/design.md) has how each corner case is decided,
+from `-` alone to negative numbers.
+
+## Languages
+
+Made in Temper, Argmas supports these languages, and its tests run on
+each:
+
+- C++
+- C\#
+- Java
+- JavaScript
+- Lua
+- Python
+- Rust
+
+## Development
+
+Written with Claude Code and Opus 5.5.
+
+Run tests with [Temper](https://temperlang.dev/), on the interpreter
+while working:
+
+    temper test -b interp
+
+Or on every backend:
+
+    temper test -b cpp -b csharp -b java -b js -b lua -b py -b rust
+
+Source files in `src/` are literate Markdown: `command.temper.md`
+declares commands and their arguments, `parse.temper.md` parses,
+`help.temper.md` writes help, and `values.temper.md` has the value
+types, with tests beside them in `-tests` files. `tour-tests.temper.md`
+checks the example above.
 
 ## License
 
 Apache-2.0 OR MIT, at your option; see [COPYRIGHT](COPYRIGHT).
-
-Written with Claude Code and Opus 5.5.
