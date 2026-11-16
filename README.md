@@ -6,7 +6,8 @@ help, clear errors with suggestions, and shell completions, with the same
 behavior in C++, C#, Java, JavaScript, Lua, Python, and Rust.
 
 **Status: early.** Options, flags, positional arguments, environment
-fallbacks, help, and errors work; subcommands and completions are next.
+fallbacks, subcommands, help, and errors work; argument styles and
+completions are next.
 See [docs/design.md](docs/design.md). It stays beta until Temper's
 translations reach 1.0, and the API may change.
 
@@ -53,6 +54,27 @@ error.text();
 //       --version        Show the version and exit.
 ```
 
+Subcommands are commands of their own, with their own arguments and
+help, and options marked `inherited` work before or after their names:
+
+```temper
+let git = new Command({ name: "minigit", about: "Track files." });
+let quiet = git.flag({ name: "quiet", short: "q", inherited: true });
+let add = git.command({ name: "add", about: "Add files." });
+let force = add.flag({ name: "force", short: "f", help: "Add ignored files too." });
+let paths = add.positionals(strings, { name: "PATH", min: 1 });
+let rm = git.command({ name: "rm", about: "Remove files.", aliases: ["remove"] });
+
+let args = git.parse(["add", "-qf", "a.txt"]) as Args orelse panic();
+when (args.command) {
+  add -> args.get(paths);  // ["a.txt"], with args.get(force) and args.get(quiet) true
+  rm -> ...;
+  else -> ...;
+}
+// `minigit help add` and `minigit add --help` give add's help, and
+// `minigit ad` says "unknown command 'ad'; did you mean add?".
+```
+
 A program usually matches on the result: `Args` to run, `Output` to
 print and exit with status 0, and `ArgError` to print to standard error
 and exit with status 2. Parsing touches nothing outside: the program
@@ -89,8 +111,9 @@ Or on every backend:
 Source files in `src/` are literate Markdown: `command.temper.md`
 declares commands and their arguments, `parse.temper.md` parses,
 `help.temper.md` writes help, and `values.temper.md` has the value
-types, with tests beside them in `-tests` files. `tour-tests.temper.md`
-checks the example above.
+types, with tests beside them in `-tests` files and subcommands' tests
+in `subcommand-tests.temper.md`. `tour-tests.temper.md` checks the
+examples above.
 
 ## License
 

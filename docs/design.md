@@ -82,22 +82,38 @@ metaprogramming").
 
 ### Subcommands
 
-A sketch for the next slice:
+As built in the second slice:
 
 ```temper
-let add = cli.command({ name: "add", about: "Add a file." });
-let addForce = add.flag({ name: "force", short: "f" });
+let cli = new Command({ name: "frob", about: "Frobnicate files." });
+let verbose = cli.count({ name: "verbose", short: "v", inherited: true });
+let add = cli.command({ name: "add", about: "Add a file.", aliases: ["a"] });
+let force = add.flag({ name: "force", short: "f" });
 let rm = cli.command({ name: "rm", about: "Remove a file." });
+let remote = cli.command({ name: "remote", about: "Manage remotes." });
+let remoteAdd = remote.command({ name: "add", about: "Add a remote." });
 
-let args = cli.parse(argv) orelse cli.exitWithUsage();
+// After matching `Output` and `ArgError` as above:
+let args = cli.parse(argv, env) as Args orelse ...;
 when (args.command) {
-  add -> { ... args.get(addForce) ... }
-  rm -> { ... }
+  add -> ...;        // args.get(force), args.get(verbose)
+  rm -> ...;
+  remoteAdd -> ...;
+  else -> ...;
 }
 ```
 
-Options declared on a command apply to its subcommands when marked
-`global`; each subcommand has its own help and errors.
+- `cli.command({ ... })` returns a `Command` with its own arguments,
+  help, errors, and subcommands; `SubcommandSpec` has `name`, `about`,
+  `aliases`, and `commandOptional`.
+- Options and flags marked `inherited` are accepted by every
+  subcommand below the command declaring them, before or after the
+  subcommand's name, and help lists them under each.
+- One `Args` holds the values of the command that ran and every
+  command above it, so `args.get` reads any handle; a handle of a
+  command that didn't run reads as absent.
+- `args.command` is the command that ran: the last subcommand named,
+  or the top command when none was.
 
 ## Behavior, the same in every language
 
@@ -190,6 +206,68 @@ Each corner case gets one decision, written down here, and a test
 - **Error text:** `frob: <message>`, then the usage, then
   `Try 'frob --help' for more information.` when `--help` is built in.
 
+Subcommands (`src/subcommand-tests.temper.md`):
+
+- **Selection:** the first positional argument that names a
+  subcommand, or one of its aliases, selects it; the arguments after
+  it are the subcommand's, which can select a subcommand of its own.
+  Aliases give the same command, with its own name in `args.command`
+  and in help.
+- **Inherited options** (clap's `global`, picocli's inherited
+  options) are accepted before or after the name of any subcommand
+  below the command declaring them, at any depth, and count the same
+  either way: an option's last value wins and a counted flag adds up
+  across both places. Other options go before the subcommand's name,
+  as in git, and a subcommand's options go after it.
+- **A command with positional arguments and subcommands** gets its own
+  positional arguments before the subcommand's name. A word that names
+  a subcommand always selects it; after `--`, none does, so `--`
+  passes such a word as a positional argument. Other words are
+  positional arguments, not unknown commands.
+- **Unknown subcommands:** in a command with subcommands and no
+  positional arguments, any other word is an error, suggesting the
+  nearest name or alias (or `help`) as for options.
+- **Missing subcommands:** with none given, an error lists the
+  subcommands' names, unless the spec sets `commandOptional`; then
+  `args.command` is the command itself, and the program does what it
+  likes, such as running one of them by default. The usage line ends
+  with `COMMAND`, or `[COMMAND]` when it's optional. There's no
+  declared default subcommand: parsing its options at the top would
+  make `frob --force` work but `frob --help` not list `--force`.
+- **`help` subcommand:** a command with subcommands has a built-in
+  `help`, unless the program declares a subcommand of that name;
+  `frob help remote add` is `frob remote add --help`. The words after
+  it name subcommands, each of the one before; `-h`, `--help`, and
+  `help` among them are skipped, and any other word that names none is
+  an unknown command. In a subcommand without subcommands of its own,
+  `help` is a positional argument like any other.
+- **`--help`** gives the help of the command it's given to (`frob
+  --help add` is `frob`'s), the last one when given more than once,
+  and wins over errors as at the top: `frob bogus --help` gives
+  `frob`'s help, which lists the commands.
+- **`--version`** is built in for the top command only, as in clap;
+  `frob add --version` is an unknown option.
+- **Error order:** argument errors in argument order, then a missing
+  subcommand, then positional counts, then environment values, then
+  missing required options, each of the last three from the top
+  command down. An error shows the usage of the command it happened
+  in, after the top command's name: `frob: ...`, then
+  `Usage: frob add ...` and `Try 'frob add --help' ...`.
+- **Spec mistakes:** subcommand names and aliases follow the rules for
+  long names, and no two under one command share one; a subcommand's
+  option can't have the long or short name of an option inherited from
+  above. They're reported for the whole tree, ending with where they
+  are (`in frob add`). The same name at two levels is fine when it
+  isn't inherited.
+- **Parsing a subcommand** directly is parsing its path from the top
+  command: `add.parse(argv)` is `cli.parse(["add", ...argv])`.
+- **Help:** a command with subcommands lists them under `Commands:`,
+  with each one's about text and `[aliases: ...]`, then `help`, before
+  its arguments and options, all in one column. A subcommand's usage
+  starts with its path (`Usage: frob add [OPTIONS] FILE...`), and its
+  options list its own, then those inherited from its parent, then
+  from further up.
+
 ## Argument styles (planned, after subcommands)
 
 A `style` setting on `Command` chooses how options are written; the same
@@ -255,8 +333,8 @@ the API, and the choice made for each:
   `CommandSpec` bag as `Command`'s one parameter, and each method's bag
   class comes from its parameter's type. Tempest target-types bags; the
   older Kotlin compiler matches property names instead, and since
-  `FlagSpec` and `OptionSpec` share theirs, it may need
-  `{ class: FlagSpec, ... }`.
+  `FlagSpec` and `OptionSpec` share theirs (as do `CommandSpec` and
+  `SubcommandSpec`), it may need `{ class: FlagSpec, ... }`.
 - **No casts to a type parameter**, so a parsed result keeps each
   value's text, already checked, and a handle parses it again when read.
 - **`int`, `float`, and `string` are keywords in several target
@@ -267,14 +345,28 @@ the API, and the choice made for each:
   value types and tools.
 - **A `when` over the sealed `ParseResult`** that produces a value still
   needs an `else` branch with tempest.
+- **No identity comparison of objects**, and a class's `==` is its
+  own, so `Command` defines `==` (with `@operator("==")`) as having
+  the same path (`frob remote add`). That lets a program match
+  `args.command` in a `when`; two separately built commands with the
+  same path compare equal, so compare commands of one tree.
+- **`==` on a nullable `Command` isn't translated** (tempest's code
+  generation doesn't take a user-defined `==` through `?`), so
+  `args.command` is never null: it's the top command when no
+  subcommand ran.
+- **`global` is a keyword in Python**, where generated code would have
+  `global_`, so the setting is `inherited`, picocli's word for it.
 - **Enums aren't translated well yet**, so kinds (`ErrorKind`,
   `ParamKind`, `Source`) are classes with static instances and
   `@auto("==")`.
 
 ## Open questions
 
-- Subcommands: the sketch above, with `global` options and
-  `args.command`, waits for the next slice.
+- Subcommands: whether a declared default subcommand is worth having
+  beside `commandOptional`; whether aliases need hiding from help;
+  whether `--version` should reach subcommands; and a hint when a
+  parent's option comes after a subcommand's name ("give --dir before
+  add").
 - A flag that defaults to true, for `--no-color` style flags: today a
   flag is false unless given or set by its environment variable.
 - Options taking `Int64` values.

@@ -50,10 +50,27 @@ version, and 2 for errors.
 
 ### Values
 
+`Args` has the values for the command that ran and each command above
+it, from the top command down.
+
     export class Args(
-      private found: List<Found>,
+      private path: List<Command>,
+      private found: List<List<Found>>,
     ) extends ParseResult {
       public get exitStatus(): Int { 0 }
+
+The command that ran: the last subcommand named, or the top command
+when none was. A program matches it against the commands it declared:
+
+```temper inert
+when (args.command) {
+  add -> ...;
+  rm -> ...;
+  else -> ...;
+}
+```
+
+      public get command(): Command { path[path.length - 1] }
 
 The value of an argument that always has one, as its handle's type.
 
@@ -70,13 +87,31 @@ neither (`Source.absent`, so any default applies).
 
       public source(param: Param): Source { foundFor(param).source }
 
-      private foundFor(param: Param): Found { found[param.index] }
+An argument of a command that didn't run is absent, so it reads as its
+default: false, 0, null, an empty list, or the default given. A
+required option or a single positional argument has none, so reading
+one of those panics; check `args.command` first.
+
+      private foundFor(param: Param): Found {
+        let depth = param.command.depth;
+        if (depth < path.length && path[depth] == param.command) {
+          return found[depth][param.index];
+        }
+        absentFound()
+      }
     }
+
+Outside `Args`, since in C# its method `Source` would hide the class.
+
+    let absentFound(): Found { new Found([], Source.absent) }
 
 ### Help and version
 
     export class Output(
-      private command: Command,
+
+The command whose help or version it is.
+
+      public command: Command,
 
 Whether it's the help (true) or the version (false).
 
@@ -109,11 +144,12 @@ One line, without the program's name, such as "unknown option
       public get exitStatus(): Int { 2 }
 
 The report to print to standard error: the message after the program's
-name, the usage, and where to find more.
+name, the usage of the command where it went wrong, and where to find
+more.
 
       public text(width: Int = 80): String {
-        let name = command.spec.name;
-        let more = if (command.builtInHelpLong) { "Try '${name} --help' for more information.\n" } else { "" };
+        let name = command.top.spec.name;
+        let more = if (command.builtInHelpLong) { "Try '${command.path} --help' for more information.\n" } else { "" };
         "${name}: ${message}\n${command.usage(width)}${more}"
       }
 
@@ -148,6 +184,15 @@ A value its type doesn't take, from an argument or the environment.
       public static tooFewPositionals: ErrorKind = doPure { new ErrorKind("tooFewPositionals") }
       public static tooManyPositionals: ErrorKind = doPure { new ErrorKind("tooManyPositionals") }
 
+A word that names no subcommand where one is expected, as `frob ad`,
+or in `frob help ad`.
+
+      public static unknownCommand: ErrorKind = doPure { new ErrorKind("unknownCommand") }
+
+No subcommand given to a command that needs one.
+
+      public static missingCommand: ErrorKind = doPure { new ErrorKind("missingCommand") }
+
 A mistake in the command's spec, not the arguments, such as a name
 declared twice.
 
@@ -179,9 +224,36 @@ such a value.
 `--help` (or `-h`) and `--version` win over any error, wherever they
 come before `--`, so a user can always ask for help. Otherwise the
 first error is reported, in this order: problems in the spec, then
-problems with arguments in the order they came, then positional
-counts, then values from the environment, then missing required
-options.
+problems with arguments in the order they came, then a missing
+subcommand, then positional counts, then values from the environment,
+then missing required options, each of the last three from the top
+command down.
+
+### Subcommands
+
+In a command with subcommands, a positional argument that names one
+(or one of its aliases) selects it, and the arguments after it are the
+subcommand's: its own options, any its parents declared `inherited`,
+and its positional arguments, or the name of a subcommand of its own.
+So `frob -v add -f a.txt` gives `-v` to `frob`, and `-f` and `a.txt`
+to `add`. The parent's options that aren't inherited go before the
+subcommand's name, as in git and clap.
+
+- A command with subcommands that takes positional arguments too gets
+  those before the subcommand's name; a word that names a subcommand
+  always selects it, and after `--` none does, so `--` passes such a
+  word as a positional argument.
+- Otherwise, a word that names no subcommand is an error, suggesting
+  the nearest name.
+- `help` selects the help of the subcommand named after it, as
+  `frob help add`, unless the program declares a subcommand `help`.
+- With no subcommand given, a command that has them reports the error
+  listing them, unless its spec sets `commandOptional`.
+- `--help` shows the help of the command it's given to: `frob --help
+  add` shows `frob`'s, `frob add --help` shows `add`'s, and the last
+  one given wins.
+
+Parsing checks the spec first, then reads the arguments.
 
     let parseCommand(command: Command, argv: List<String>, env: Environment?): ParseResult {
       let problems = command.problems;
@@ -191,22 +263,34 @@ options.
       new Parser(command, argv, env).run()
     }
 
+What the parser keeps for each command on the way down: each declared
+argument's values and where they came from, and the positional
+arguments given to it.
+
+    class Level(public command: Command) {
+      public values: List<ListBuilder<String>> = makeBuilders(command.declared.length);
+      public sources: ListBuilder<Source> = makeSources(command.declared.length);
+      public positionalTexts: ListBuilder<String> = new ListBuilder<String>();
+      public numbersAreValues: Boolean = !hasDigitShort(command.options);
+    }
+
     class Parser(
-      private command: Command,
+      private top: Command,
       private argv: List<String>,
       private env: Environment?,
     ) {
-      private params: List<Param> = command.declared;
-      private values: List<ListBuilder<String>> = makeBuilders(command.declared.length);
-      private positionalTexts: ListBuilder<String> = new ListBuilder<String>();
+
+One level for the top command, and one more for each subcommand named.
+
+      private levels: ListBuilder<Level> = firstLevel(top);
       private var firstError: ArgError? = null;
-      private var wantsHelp: Boolean = false;
+
+The command whose help was asked for, if any.
+
+      private var helpFor: Command? = null;
       private var wantsVersion: Boolean = false;
-      private numbersAreValues: Boolean = !hasDigitShort(command.declared);
 
-Where each argument's values came from.
-
-      private sources: ListBuilder<Source> = makeSources(command.declared.length);
+      private get current(): Level { levels[levels.length - 1] }
 
       public run(): ParseResult {
         var i = 0;
@@ -216,32 +300,100 @@ Where each argument's values came from.
           let arg = argv[i];
           i += 1;
           if (onlyPositionals) {
-            positionalTexts.add(arg);
+            current.positionalTexts.add(arg);
           } else if (arg == "--") {
             onlyPositionals = true;
           } else if (startsWith(arg, "--")) {
             i = long(arg, i);
-          } else if (startsWith(arg, "-") && arg != "-" && !(numbersAreValues && looksLikeNumber(arg))) {
+          } else if (startsWith(arg, "-") && arg != "-" && !(current.numbersAreValues && looksLikeNumber(arg))) {
             i = shorts(arg, i);
           } else {
-            positionalTexts.add(arg);
+            i = word(arg, i);
           }
         }
-        if (wantsHelp) { return new Output(command, true); }
-        if (wantsVersion) { return new Output(command, false); }
+        let help = helpFor;
+        if (help != null) { return new Output(help, true); }
+        if (wantsVersion) { return new Output(top, false); }
         let early = firstError;
         if (early != null) { return early; }
-        assignPositionals();
-        readEnvironment();
-        checkRequired();
+        let last = current.command;
+        if (!last.commands.isEmpty && !last.spec.commandOptional) {
+          let names = last.commands.join(", ") { (c: Command): String => c.spec.name };
+          fail(last, ErrorKind.missingCommand, "missing command; expected one of ${names}");
+        }
+        for (let level of levels.toList()) { assignPositionals(level); }
+        for (let level of levels.toList()) { readEnvironment(level); }
+        for (let level of levels.toList()) { checkRequired(level); }
         let error = firstError;
         if (error != null) { return error; }
-        let found = new ListBuilder<Found>();
-        for (let p of params) {
-          let texts = values[p.index].toList();
-          found.add(new Found(texts, sources[p.index]));
+        let path = new ListBuilder<Command>();
+        let found = new ListBuilder<List<Found>>();
+        for (let level of levels.toList()) {
+          path.add(level.command);
+          let foundHere = new ListBuilder<Found>();
+          for (let p of level.command.declared) {
+            foundHere.add(new Found(level.values[p.index].toList(), level.sources[p.index]));
+          }
+          found.add(foundHere.toList());
         }
-        new Args(found.toList())
+        new Args(path.toList(), found.toList())
+      }
+
+### Words
+
+A positional argument, or the name of a subcommand. Returns the index
+of the next argument to read.
+
+      private word(arg: String, next: Int): Int {
+        let level = current;
+        let command = level.command;
+        if (!command.commands.isEmpty) {
+          let sub = command.findCommand(arg);
+          if (sub != null) {
+            levels.add(new Level(sub));
+            return next;
+          }
+          if (arg == "help" && command.builtInHelpCommand) {
+            return helpPath(command, next);
+          }
+          if (!command.takesPositionals) {
+            fail(command, ErrorKind.unknownCommand, "unknown command '${arg}'${suggestCommand(command, arg)}");
+            return next;
+          }
+        }
+        level.positionalTexts.add(arg);
+        next
+      }
+
+After `help`, every argument names a subcommand of the one before, and
+the help is the last one's. `-h`, `--help`, and `help` itself are
+skipped, so `frob help --help` is `frob`'s help too.
+
+      private helpPath(command: Command, next: Int): Int {
+        var target = command;
+        for (var i = next; i < argv.length; i += 1) {
+          let name = argv[i];
+          if (name == "-h" || name == "--help" || (name == "help" && target.builtInHelpCommand)) { continue; }
+          let sub = target.findCommand(name);
+          if (sub == null) {
+            fail(target, ErrorKind.unknownCommand, "unknown command '${name}'${suggestCommand(target, name)}");
+            return argv.length;
+          }
+          target = sub;
+        }
+        helpFor = target;
+        argv.length
+      }
+
+      private suggestCommand(command: Command, typed: String): String {
+        let names = new ListBuilder<String>();
+        for (let sub of command.commands) {
+          names.add(sub.spec.name);
+          for (let alias of sub.aliases) { names.add(alias); }
+        }
+        if (command.builtInHelpCommand) { names.add("help"); }
+        let best = nearest(typed, names.toList());
+        if (best != null) { "; did you mean ${best}?" } else { "" }
       }
 
 ### Long options
@@ -250,6 +402,7 @@ Where each argument's values came from.
 a value it took.
 
       private long(arg: String, next: Int): Int {
+        let command = current.command;
         let body = dropFirst(arg, 2);
         let eq = body.indexOf("=");
         var name = body;
@@ -268,28 +421,28 @@ a value it took.
             return takeLong(negated, name, inline, true, next);
           }
           if (negated != null) {
-            fail(ErrorKind.unknownOption, "unknown option --${name}; --${negated.name} can't be negated");
+            fail(command, ErrorKind.unknownOption, "unknown option --${name}; --${negated.name} can't be negated");
             return next;
           }
         }
         if (name == "help" && command.builtInHelpLong) {
-          if (inline != null) { fail(ErrorKind.unexpectedValue, "option --help takes no value"); }
-          wantsHelp = true;
+          if (inline != null) { fail(command, ErrorKind.unexpectedValue, "option --help takes no value"); }
+          helpFor = command;
           return next;
         }
         if (name == "version" && command.builtInVersion) {
-          if (inline != null) { fail(ErrorKind.unexpectedValue, "option --version takes no value"); }
+          if (inline != null) { fail(command, ErrorKind.unexpectedValue, "option --version takes no value"); }
           wantsVersion = true;
           return next;
         }
-        fail(ErrorKind.unknownOption, "unknown option --${name}${suggestLong(name)}");
+        fail(command, ErrorKind.unknownOption, "unknown option --${name}${suggestLong(command, name)}");
         next
       }
 
       private takeLong(p: Param, typed: String, inline: String?, negated: Boolean, next: Int): Int {
         if (p.kind != ParamKind.option) {
           if (inline != null) {
-            fail(ErrorKind.unexpectedValue, "option --${typed} takes no value");
+            fail(current.command, ErrorKind.unexpectedValue, "option --${typed} takes no value");
           } else {
             occur(p, negated);
           }
@@ -305,6 +458,7 @@ a value it took.
 ### Short options
 
       private shorts(arg: String, next: Int): Int {
+        let command = current.command;
         var i = arg.next(String.begin);
         while (arg.hasIndex(i)) {
           let after = arg.next(i);
@@ -321,10 +475,10 @@ a value it took.
           } else if (p != null) {
             occur(p, false);
           } else if (c == "h" && command.builtInHelpShort) {
-            wantsHelp = true;
+            helpFor = command;
           } else {
             let within = if (arg.hasAtLeast(String.begin, arg.end, 3)) { " in ${arg}" } else { "" };
-            fail(ErrorKind.unknownOption, "unknown option -${c}${within}${suggestFromShort(arg)}");
+            fail(command, ErrorKind.unknownOption, "unknown option -${c}${within}${suggestFromShort(command, arg)}");
             return next;
           }
           i = after;
@@ -340,39 +494,50 @@ look like an option.
       private takeNext(p: Param, next: Int): Int {
         if (next < argv.length) {
           let candidate = argv[next];
-          if (!startsWith(candidate, "-") || candidate == "-" || (numbersAreValues && looksLikeNumber(candidate))) {
+          if (!startsWith(candidate, "-") || candidate == "-" || (current.numbersAreValues && looksLikeNumber(candidate))) {
             give(p, candidate);
             return next + 1;
           }
-          fail(ErrorKind.missingValue, "option --${p.name} needs a value; to give one starting with '-', write --${p.name}=${candidate}");
+          fail(current.command, ErrorKind.missingValue, "option --${p.name} needs a value; to give one starting with '-', write --${p.name}=${candidate}");
           return next;
         }
-        fail(ErrorKind.missingValue, "option --${p.name} needs a value");
+        fail(current.command, ErrorKind.missingValue, "option --${p.name} needs a value");
         next
       }
 
+An argument's values are kept with the command that declared it, so an
+inherited option given after a subcommand's name counts the same as
+before it.
+
+      private owner(p: Param): Level { levels[p.command.depth] }
+
       private give(p: Param, text: String): Void {
         if (!p.accepts(text)) {
-          fail(ErrorKind.invalidValue, invalidMessage(p, text, null));
+          fail(current.command, ErrorKind.invalidValue, invalidMessage(p, text, null));
         }
-        values[p.index].add(text);
-        sources.set(p.index, Source.argument);
+        let level = owner(p);
+        level.values[p.index].add(text);
+        level.sources.set(p.index, Source.argument);
       }
 
 A flag's occurrence: `true` (or `false` when negated) for a flag, and
 one more (or back to zero) for a counted flag.
 
       private occur(p: Param, negated: Boolean): Void {
-        let list = values[p.index];
+        let level = owner(p);
+        let list = level.values[p.index];
         if (p.kind == ParamKind.count) {
           if (negated) { list.clear(); } else { list.add("1"); }
         } else {
           list.add(if (negated) { "false" } else { "true" });
         }
-        sources.set(p.index, Source.argument);
+        level.sources.set(p.index, Source.argument);
       }
 
-      private fail(kind: ErrorKind, message: String): Void {
+Errors are reported with the command where they happened, for its
+usage line.
+
+      private fail(command: Command, kind: ErrorKind, message: String): Void {
         if (firstError == null) {
           firstError = new ArgError(command, kind, message);
         }
@@ -383,9 +548,10 @@ one more (or back to zero) for a counted flag.
 Each positional list gets its minimum, then the rest go to the
 earliest lists that take more.
 
-      private assignPositionals(): Void {
-        let texts = positionalTexts.toList();
-        let groups = params.filter { (p: Param): Boolean => p.kind == ParamKind.positional };
+      private assignPositionals(level: Level): Void {
+        let command = level.command;
+        let texts = level.positionalTexts.toList();
+        let groups = command.declared.filter { (p: Param): Boolean => p.kind == ParamKind.positional };
         var needed = 0;
         for (let g of groups) { needed += g.min; }
         var extra = texts.length - needed;
@@ -399,7 +565,7 @@ earliest lists that take more.
               } else {
                 "missing argument ${g.name}: needs at least ${g.min}, got ${left.max(0)}"
               };
-              fail(ErrorKind.tooFewPositionals, message);
+              fail(command, ErrorKind.tooFewPositionals, message);
               return;
             }
             left -= g.min;
@@ -416,15 +582,15 @@ earliest lists that take more.
           for (var k = 0; k < take; k += 1) {
             let text = texts[at + k];
             if (!g.accepts(text)) {
-              fail(ErrorKind.invalidValue, invalidMessage(g, text, null));
+              fail(command, ErrorKind.invalidValue, invalidMessage(g, text, null));
             }
-            values[g.index].add(text);
-            sources.set(g.index, Source.argument);
+            level.values[g.index].add(text);
+            level.sources.set(g.index, Source.argument);
           }
           at += take;
         }
         if (at < texts.length) {
-          fail(ErrorKind.tooManyPositionals, "unexpected argument '${texts[at]}'");
+          fail(command, ErrorKind.tooManyPositionals, "unexpected argument '${texts[at]}'");
         }
       }
 
@@ -433,44 +599,45 @@ earliest lists that take more.
 An argument not given reads its environment variable, if it has one
 that is set and not empty.
 
-      private readEnvironment(): Void {
+      private readEnvironment(level: Level): Void {
         let e = env;
         if (e == null) { return; }
-        for (let p of params) {
+        let command = level.command;
+        for (let p of command.declared) {
           let name = p.env;
-          if (name == null || sources[p.index] == Source.argument) { continue; }
+          if (name == null || level.sources[p.index] == Source.argument) { continue; }
           let text = e.get(name);
           if (text == null || text.isEmpty) { continue; }
           if (p.kind == ParamKind.flag) {
             let b = parseBoolean(text) orelse null;
             if (b == null) {
-              fail(ErrorKind.invalidValue, "invalid value '${text}' for --${p.name} from ${name}: expected ${booleanExpected}");
+              fail(command, ErrorKind.invalidValue, "invalid value '${text}' for --${p.name} from ${name}: expected ${booleanExpected}");
               continue;
             }
-            values[p.index].add(if (b) { "true" } else { "false" });
+            level.values[p.index].add(if (b) { "true" } else { "false" });
           } else if (p.kind == ParamKind.count) {
             let n = ints.parse(text) orelse -1;
             if (n < 0) {
-              fail(ErrorKind.invalidValue, "invalid value '${text}' for --${p.name} from ${name}: expected a count");
+              fail(command, ErrorKind.invalidValue, "invalid value '${text}' for --${p.name} from ${name}: expected a count");
               continue;
             }
-            values[p.index].add(n.toString());
+            level.values[p.index].add(n.toString());
           } else {
             if (!p.accepts(text)) {
-              fail(ErrorKind.invalidValue, invalidMessage(p, text, name));
+              fail(command, ErrorKind.invalidValue, invalidMessage(p, text, name));
               continue;
             }
-            values[p.index].add(text);
+            level.values[p.index].add(text);
           }
-          sources.set(p.index, Source.environment);
+          level.sources.set(p.index, Source.environment);
         }
       }
 
-      private checkRequired(): Void {
-        for (let p of params) {
-          if (p.kind == ParamKind.option && p.required && values[p.index].length == 0) {
+      private checkRequired(level: Level): Void {
+        for (let p of level.command.declared) {
+          if (p.kind == ParamKind.option && p.required && level.values[p.index].length == 0) {
             let orEnv = if (p.env != null) { " (or ${p.env})" } else { "" };
-            fail(ErrorKind.missingRequired, "missing required option --${p.name}${orEnv}");
+            fail(level.command, ErrorKind.missingRequired, "missing required option --${p.name}${orEnv}");
           }
         }
       }
@@ -483,8 +650,8 @@ most a third of the typed name's length (at least 1). Ties go to the
 earliest declared. `--no-NAME` for a flag that isn't negatable says
 so instead.
 
-      private suggestLong(typed: String): String {
-        let names = longNames();
+      private suggestLong(command: Command, typed: String): String {
+        let names = longNames(command);
         let best = nearest(typed, names);
         if (best != null) { return "; did you mean --${best}?"; }
         // `--v` for `-v`.
@@ -496,25 +663,29 @@ so instead.
 
 `-verbose`, with one dash, for `--verbose`.
 
-      private suggestFromShort(arg: String): String {
+      private suggestFromShort(command: Command, arg: String): String {
         let word = dropFirst(arg, 1);
         if (!word.hasAtLeast(String.begin, word.end, 2)) { return ""; }
-        let best = nearest(word, longNames());
+        let best = nearest(word, longNames(command));
         if (best != null) { "; did you mean --${best}?" } else { "" }
       }
 
-      private longNames(): List<String> {
+      private longNames(command: Command): List<String> {
         let names = new ListBuilder<String>();
-        for (let p of params) {
-          if (p.kind != ParamKind.positional) {
-            names.add(p.name);
-            if (p.negatable) { names.add("no-${p.name}"); }
-          }
+        for (let p of command.options) {
+          names.add(p.name);
+          if (p.negatable) { names.add("no-${p.name}"); }
         }
         if (command.builtInHelpLong) { names.add("help"); }
         if (command.builtInVersion) { names.add("version"); }
         names.toList()
       }
+    }
+
+    let firstLevel(top: Command): ListBuilder<Level> {
+      let out = new ListBuilder<Level>();
+      out.add(new Level(top));
+      out
     }
 
     let invalidMessage(p: Param, text: String, envName: String?): String {

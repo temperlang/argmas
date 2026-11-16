@@ -38,6 +38,23 @@ help.
 The version `--version` prints. Without one, there's no `--version`.
 
       public version: String? = null,
+
+Whether a command with [subcommands](#subcommands) may be run without
+one. By default, leaving the subcommand out is an error listing them.
+
+      public commandOptional: Boolean = false,
+    ) {}
+
+Settings for a subcommand, declared with `cli.command`: its name, what
+it's about (shown in its parent's list of commands and atop its own
+help), other names it answers to, and, as for `CommandSpec`, whether
+its own subcommands may be left out.
+
+    export class SubcommandSpec(
+      public name: String,
+      public about: String = "",
+      public aliases: List<String> = [],
+      public commandOptional: Boolean = false,
     ) {}
 
 Settings for a flag, which takes no value: `--verbose`, or `-v` with a
@@ -59,6 +76,11 @@ Whether `--no-NAME` is also accepted, setting the flag back to false
 or a default from the environment.
 
       public negatable: Boolean = false,
+
+Whether the command's subcommands accept it too, before or after their
+names, as for all settings below.
+
+      public inherited: Boolean = false,
     ) {}
 
 Settings for an option, which takes a value: `--level 3`,
@@ -74,6 +96,12 @@ What help calls the value, as in `--level <N>`; the name in capitals
 when not set.
 
       public valueName: String? = null,
+
+Whether the command's subcommands, and theirs, accept it too, before
+or after their names: `frob -v add` and `frob add -v` are the same.
+Help lists it under each.
+
+      public inherited: Boolean = false,
     ) {}
 
 Settings for positional arguments: a name for usage and help (`FILE`),
@@ -109,6 +137,10 @@ What help calls the value; empty for flags.
 
       public valueName: String,
       public negatable: Boolean,
+
+Whether subcommands accept it too.
+
+      public inherited: Boolean,
       public required: Boolean,
 
 Whether every value is kept (repeated options, positional lists),
@@ -135,6 +167,10 @@ Where the parsed result keeps its values.
 
       public index: Int,
       private checker: Checker,
+
+The command that declared it.
+
+      public command: Command,
     ) {
 
 Whether `text` is a valid value.
@@ -291,23 +327,37 @@ before reading any arguments.
 
       private specProblems: ListBuilder<String> = new ListBuilder<String>();
 
+The command this is a subcommand of, its subcommands, and the other
+names it answers to, all set by `command`.
+
+      private var up: Command? = null;
+      private subs: ListBuilder<Command> = new ListBuilder<Command>();
+      private var otherNames: List<String> = [];
+
 Every argument declared, in order.
 
       public get declared(): List<Param> { params.toList() }
 
-      public get problems(): List<String> { specProblems.toList() }
+The spec's mistakes, this command's and then its subcommands', each
+subcommand's ending with where it is (`in frob add`).
+
+      public get problems(): List<String> {
+        let out = new ListBuilder<String>();
+        collectProblems(out);
+        out.toList()
+      }
 
 A flag: true when given, false when not (or as its environment
 variable says).
 
       public flag(spec: FlagSpec): Flag {
-        new Flag(addParam(ParamKind.flag, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, false, false, 0, 0, null, [], booleanExpected, new NoValueChecker()))
+        new Flag(addParam(ParamKind.flag, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, false, 0, 0, null, [], booleanExpected, new NoValueChecker()))
       }
 
 A counted flag: the number of times it's given, so `-vvv` is 3.
 
       public count(spec: FlagSpec): Counter {
-        new Counter(addParam(ParamKind.count, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, false, true, 0, 0, null, [], "a count", new NoValueChecker()))
+        new Counter(addParam(ParamKind.count, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, true, 0, 0, null, [], "a count", new NoValueChecker()))
       }
 
 An option that may be left out; its value is null then. Given more
@@ -354,24 +404,24 @@ takes more, so `SRC... DEST` works.
 
       private optionParam<T>(type: ValueType<T>, spec: OptionSpec, required: Boolean, repeated: Boolean, defaultText: String?): Param {
         let valueName = spec.valueName ?? asciiUpper(spec.name);
-        addParam(ParamKind.option, spec.name, spec.short, spec.help, spec.env, valueName, false, required, repeated, 0, 0, defaultText, type.choices, type.expected, new TypeChecker<T>(type))
+        addParam(ParamKind.option, spec.name, spec.short, spec.help, spec.env, valueName, false, spec.inherited, required, repeated, 0, 0, defaultText, type.choices, type.expected, new TypeChecker<T>(type))
       }
 
       private positionalParam<T>(type: ValueType<T>, name: String, help: String, min: Int, max: Int?): Param {
         if (min < 0 || (max != null && max < min) || max == 0) {
           specProblems.add("positional ${name} allows no count of arguments");
         }
-        addParam(ParamKind.positional, name, null, help, null, name, false, min > 0, true, min, max, null, type.choices, type.expected, new TypeChecker<T>(type))
+        addParam(ParamKind.positional, name, null, help, null, name, false, false, min > 0, true, min, max, null, type.choices, type.expected, new TypeChecker<T>(type))
       }
 
       private addParam(
         kind: ParamKind, name: String, short: String?, help: String, env: String?,
-        valueName: String, negatable: Boolean, required: Boolean, repeated: Boolean,
-        min: Int, max: Int?, defaultText: String?, choiceList: List<String>,
-        expected: String, checker: Checker,
+        valueName: String, negatable: Boolean, inherited: Boolean, required: Boolean,
+        repeated: Boolean, min: Int, max: Int?, defaultText: String?,
+        choiceList: List<String>, expected: String, checker: Checker,
       ): Param {
         checkNames(kind, name, short);
-        let p = new Param(kind, name, short, help, env, valueName, negatable, required, repeated, min, max, defaultText, choiceList, expected, params.length, checker);
+        let p = new Param(kind, name, short, help, env, valueName, negatable, inherited, required, repeated, min, max, defaultText, choiceList, expected, params.length, checker, this);
         params.add(p);
         p
       }
@@ -383,7 +433,7 @@ taken, which leaves `--help`, `-h`, or `--version` to the program.
 
       private checkNames(kind: ParamKind, name: String, short: String?): Void {
         let isPositional = kind == ParamKind.positional;
-        if (name.isEmpty || startsWith(name, "-") || contains(name, "=") || contains(name, " ")) {
+        if (!validName(name)) {
           specProblems.add("invalid name '${name}'");
         }
         if (short != null) {
@@ -403,9 +453,18 @@ taken, which leaves `--help`, `-h`, or `--version` to the program.
       }
 
 Parsing and help are in [their own file](parse.temper.md) and
-[another](help.temper.md); these call them.
+[another](help.temper.md); these call them. Parsing a subcommand is
+parsing its top command with the subcommand's path first:
+`add.parse(["a.txt"])` is `cli.parse(["add", "a.txt"])`.
 
       public parse(argv: List<String>, env: Environment? = null): ParseResult {
+        let parent = up;
+        if (parent != null) {
+          let withName = new ListBuilder<String>();
+          withName.add(spec.name);
+          for (let arg of argv) { withName.add(arg); }
+          return parent.parse(withName.toList(), env);
+        }
         parseCommand(this, argv, env)
       }
 
@@ -415,29 +474,174 @@ Parsing and help are in [their own file](parse.temper.md) and
 
 Whether `--help`, `-h`, and `--version` are built in: they are unless
 the program declares those names itself (or, for `--version`, has no
-version).
+version, which subcommands never have).
 
       public get builtInHelpLong(): Boolean { findLong("help") == null }
       public get builtInHelpShort(): Boolean { findShort("h") == null }
       public get builtInVersion(): Boolean { spec.version != null && findLong("version") == null }
 
-The declared option or flag with this long or short name, if any.
+The option or flag this command accepts with this long or short name,
+if any: its own, or one its parents declared `inherited`.
 
       public findLong(name: String): Param? {
-        for (var i = 0; i < params.length; i += 1) {
-          let p = params[i];
-          if (p.kind != ParamKind.positional && p.name == name) { return p; }
+        for (let p of options) {
+          if (p.name == name) { return p; }
         }
         null
       }
 
       public findShort(short: String): Param? {
-        for (var i = 0; i < params.length; i += 1) {
-          let p = params[i];
+        for (let p of options) {
           if (p.short == short) { return p; }
         }
         null
       }
+
+The options and flags this command accepts: its own in the order
+declared, then those its parent declared `inherited`, then its
+grandparent's, and so on.
+
+      public get options(): List<Param> {
+        let out = new ListBuilder<Param>();
+        for (let p of params.toList()) {
+          if (p.kind != ParamKind.positional) { out.add(p); }
+        }
+        for (let ancestor of ancestors) {
+          for (let p of ancestor.declared) {
+            if (p.inherited && p.kind != ParamKind.positional) { out.add(p); }
+          }
+        }
+        out.toList()
+      }
+
+      public get takesPositionals(): Boolean {
+        for (let p of params.toList()) {
+          if (p.kind == ParamKind.positional) { return true; }
+        }
+        false
+      }
+
+## Subcommands
+
+`cli.command({ name: "add", about: "Add a file." })` declares a
+subcommand and returns its own `Command`, with its own arguments, help,
+errors, and, if it likes, subcommands of its own.
+
+      public command(spec: SubcommandSpec): Command {
+        let sub = new Command(new CommandSpec(spec.name, spec.about, null, spec.commandOptional));
+        sub.up = this;
+        sub.otherNames = spec.aliases;
+        let names = new ListBuilder<String>();
+        names.add(spec.name);
+        for (let alias of spec.aliases) { names.add(alias); }
+        for (let name of names.toList()) {
+          if (!validName(name)) {
+            specProblems.add("invalid command name '${name}'");
+          } else if (findCommand(name) != null) {
+            specProblems.add("command ${name} declared twice");
+          }
+        }
+        subs.add(sub);
+        sub
+      }
+
+The command this is a subcommand of, or null for the top command.
+
+      public get parent(): Command? { up }
+
+The subcommands declared, in order.
+
+      public get commands(): List<Command> { subs.toList() }
+
+The other names this subcommand answers to.
+
+      public get aliases(): List<String> { otherNames }
+
+The top command's name, then each subcommand's down to this one, as
+usage lines show it: `frob remote add`.
+
+      public get path(): String {
+        let parent = up;
+        if (parent == null) { spec.name } else { "${parent.path} ${spec.name}" }
+      }
+
+How many commands up the top command is: 0 for the top command itself.
+
+      public get depth(): Int {
+        let parent = up;
+        if (parent == null) { 0 } else { parent.depth + 1 }
+      }
+
+The commands above this one, nearest first.
+
+      public get ancestors(): List<Command> {
+        let out = new ListBuilder<Command>();
+        var ancestor = up;
+        while (true) {
+          let a = ancestor;
+          if (a == null) { break; }
+          out.add(a);
+          ancestor = a.parent;
+        }
+        out.toList()
+      }
+
+      public get top(): Command {
+        let parent = up;
+        if (parent == null) { this } else { parent.top }
+      }
+
+The subcommand with this name or alias, if any.
+
+      public findCommand(name: String): Command? {
+        for (let sub of subs.toList()) {
+          if (sub.spec.name == name) { return sub; }
+          for (let alias of sub.aliases) {
+            if (alias == name) { return sub; }
+          }
+        }
+        null
+      }
+
+Whether `help` is a built-in subcommand, as `frob help add`: it is for
+a command with subcommands, unless one of them takes the name.
+
+      public get builtInHelpCommand(): Boolean {
+        !subs.isEmpty && findCommand("help") == null
+      }
+
+Commands are the same when their paths are, so a program can match
+`args.command` against the commands it declared.
+
+      @operator("==")
+      public eq(other: Command): Boolean { path == other.path }
+
+Mistakes are collected from the whole tree, including an option that
+has the name of one its parents declared `inherited`.
+
+      private collectProblems(out: ListBuilder<String>): Void {
+        let location = if (up != null) { " in ${path}" } else { "" };
+        for (let problem of specProblems.toList()) { out.add("${problem}${location}"); }
+        for (let ancestor of ancestors) {
+          for (let q of ancestor.declared) {
+            if (!q.inherited || q.kind == ParamKind.positional) { continue; }
+            for (let p of params.toList()) {
+              if (p.kind == ParamKind.positional) { continue; }
+              if (p.name == q.name) { out.add("--${p.name} declared twice${location}"); }
+              let short = p.short;
+              if (short != null && q.short == short) { out.add("-${short} declared twice${location}"); }
+            }
+          }
+        }
+        for (let sub of subs.toList()) { sub.collectProblems(out); }
+      }
+    }
+
+A long name or a command's name is one or more characters, not
+starting with `-`, and without `=` or spaces.
+
+    let validName(name: String): Boolean {
+      !(name.isEmpty || startsWith(name, "-") || contains(name, "=") || contains(name, " "))
     }
 
 ## Text helpers

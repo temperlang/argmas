@@ -32,6 +32,13 @@ Options:
   no further than two fifths of the width (and at least 16 columns in);
   a longer name has its help on the next line. Help wraps at spaces,
   and a word too long for the room is left whole.
+- A command with subcommands lists them under "Commands:", each with
+  its about text and aliases, before its arguments and options, and
+  its usage line ends with `COMMAND` (`[COMMAND]` when it may be left
+  out).
+- A subcommand's usage line starts with its path (`frob add`), and its
+  options include those its parents declared `inherited`, after its
+  own.
 
 The help puts these together.
 
@@ -46,14 +53,25 @@ The help puts these together.
       }
       out.append(usageText(command, width));
 
+      let commands = new ListBuilder<HelpItem>();
+      for (let sub of command.commands) {
+        let notes = if (sub.aliases.isEmpty) { [] } else {
+          ["[aliases: ${sub.aliases.join(", ") { (a: String): String => a }}]"]
+        };
+        commands.add(new HelpItem("  ${sub.spec.name}", sub.spec.about, notes));
+      }
+      if (command.builtInHelpCommand) {
+        commands.add(new HelpItem("  help", "Show help for a command.", []));
+      }
       let arguments = new ListBuilder<HelpItem>();
-      let options = new ListBuilder<HelpItem>();
       for (let p of command.declared) {
         if (p.kind == ParamKind.positional) {
           arguments.add(new HelpItem("  ${positionalForm(p, false)}", p.help, []));
-        } else {
-          options.add(new HelpItem(optionLeft(p), p.help, annotations(p)));
         }
+      }
+      let options = new ListBuilder<HelpItem>();
+      for (let p of command.options) {
+        options.add(new HelpItem(optionLeft(p), p.help, annotations(p)));
       }
       if (command.builtInHelpLong || command.builtInHelpShort) {
         let left = if (command.builtInHelpShort && command.builtInHelpLong) {
@@ -70,10 +88,15 @@ The help puts these together.
       }
 
       var longest = 0;
+      for (let item of commands.toList()) { longest = longest.max(codePointCount(item.left)); }
       for (let item of arguments.toList()) { longest = longest.max(codePointCount(item.left)); }
       for (let item of options.toList()) { longest = longest.max(codePointCount(item.left)); }
       let column = (longest + 2).min((width * 2 / 5).max(16));
 
+      if (!commands.isEmpty) {
+        out.append("\nCommands:\n");
+        for (let item of commands.toList()) { appendItem(out, item, column, width); }
+      }
       if (!arguments.isEmpty) {
         out.append("\nArguments:\n");
         for (let item of arguments.toList()) { appendItem(out, item, column, width); }
@@ -118,14 +141,13 @@ one line.
 ## The usage line
 
     let usageText(command: Command, width: Int): String {
-      let name = command.spec.name;
       let units = new ListBuilder<String>();
       var anyOptional = command.builtInHelpLong || command.builtInHelpShort || command.builtInVersion;
-      for (let p of command.declared) {
-        if (p.kind != ParamKind.positional && !p.required) { anyOptional = true; }
+      for (let p of command.options) {
+        if (!p.required) { anyOptional = true; }
       }
       if (anyOptional) { units.add("[OPTIONS]"); }
-      for (let p of command.declared) {
+      for (let p of command.options) {
         if (p.kind == ParamKind.option && p.required) {
           units.add("--${p.name} <${p.valueName}>");
         }
@@ -133,7 +155,10 @@ one line.
       for (let p of command.declared) {
         if (p.kind == ParamKind.positional) { units.add(positionalForm(p, true)); }
       }
-      let lead = "Usage: ${name}";
+      if (!command.commands.isEmpty) {
+        units.add(if (command.spec.commandOptional) { "[COMMAND]" } else { "COMMAND" });
+      }
+      let lead = "Usage: ${command.path}";
       let indent = spaces((codePointCount(lead) + 1).min(width / 2));
       let out = new StringBuilder();
       out.append(lead);
