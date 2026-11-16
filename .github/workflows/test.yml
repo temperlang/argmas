@@ -61,6 +61,10 @@ jobs:
           cargo build --locked --release -p tempest
           mkdir -p "$RUNNER_TEMP/temper-bin"
           cp target/release/temper "$RUNNER_TEMP/temper-bin/"
+      # Checkouts must be inside the workspace, but Temper builds every
+      # Temper file under it, so the compiler's sources must go.
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: rm -rf tempest
       - run: |
           "$RUNNER_TEMP/temper-bin/temper" --version
           echo "$RUNNER_TEMP/temper-bin" >> "$GITHUB_PATH"
