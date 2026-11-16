@@ -8,10 +8,17 @@ instead, for the error message. Argmas has `ints`, `floats`, `strings`,
 
     export interface ValueType<T> {
 
-What a valid value looks like, finishing "expected …" in an error, as
-in "invalid value 'abc' for --level: expected an integer".
+What a valid value looks like, in English, finishing "expected …" in
+an error, as in "invalid value 'abc' for --level: expected an
+integer".
 
       public get expected(): String;
+
+The same in the command's [messages](messages.temper.md), which may
+be translated. By default, `expected` as it is; Argmas's own types
+use their messages, and a program's types can too.
+
+      public expectedIn(messages: MessageTable): String { expected }
 
 The value the text means, or a bubble when it means none.
 
@@ -57,7 +64,8 @@ errors, the same in every language.
     export let ints: ValueType<Int> = new IntType();
 
     class IntType extends ValueType<Int> {
-      public get expected(): String { "an integer" }
+      public get expected(): String { expectedIn(new MessageTable()) }
+      public expectedIn(messages: MessageTable): String { messages.text("expected.integer") }
 
       public parse(text: String): Int throws Bubble {
         let digits = new StringBuilder();
@@ -99,7 +107,8 @@ and `1e999` are errors.
     export let floats: ValueType<Float64> = new FloatType();
 
     class FloatType extends ValueType<Float64> {
-      public get expected(): String { "a number" }
+      public get expected(): String { expectedIn(new MessageTable()) }
+      public expectedIn(messages: MessageTable): String { messages.text("expected.number") }
 
       public parse(text: String): Float64 throws Bubble {
 
@@ -182,7 +191,8 @@ whether it exists may change before the program reads it.
     export let directories: ValueType<String> = new StringType(Directive.directories);
 
     class StringType(private directive: Directive) extends ValueType<String> {
-      public get expected(): String { "text" }
+      public get expected(): String { expectedIn(new MessageTable()) }
+      public expectedIn(messages: MessageTable): String { messages.text("expected.text") }
       public parse(text: String): String throws Bubble { text }
       public format(value: String): String { value }
       public complete(partial: String): Completion { new Completion([], directive, "") }
@@ -199,7 +209,10 @@ the nearest when there's one close enough.
     }
 
     class ChoiceType(private allowed: List<String>) extends ValueType<String> {
-      public get expected(): String { "one of ${allowed.join(", ") { (s: String): String => s }}" }
+      public get expected(): String { expectedIn(new MessageTable()) }
+      public expectedIn(messages: MessageTable): String {
+        messages.text("expected.oneOf", ["choices", messages.orList(allowed)])
+      }
 
       public parse(text: String): String throws Bubble {
         for (let s of allowed) {
@@ -225,8 +238,6 @@ command line.
       if (lower == "0" || lower == "false" || lower == "no" || lower == "off") { return false; }
       bubble()
     }
-
-    let booleanExpected = "true or false";
 
     let asciiLower(text: String): String {
       let sb = new StringBuilder();

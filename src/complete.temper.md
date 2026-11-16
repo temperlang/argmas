@@ -262,7 +262,7 @@ mistakes gets no candidates, since parsing would only report them.
           }
         }
         if (withHelp && command.builtInHelpCommand && startsWith("help", word)) {
-          add("help", "Show help for a command.");
+          add("help", command.messages.text("builtin.helpCommand"));
         }
       }
 
@@ -273,6 +273,7 @@ of `styles`.
 
       private options(level: Level, styles: List<Style>): Void {
         let command = level.command;
+        let messages = command.messages;
         for (let style of styles) {
           let lead = leadFor(style);
           let short = if (style == Style.gnu) { "-" } else { lead };
@@ -281,14 +282,14 @@ of `styles`.
             offer(style, "${lead}${p.name}", p.help);
             let s = p.short;
             if (s != null) { offer(style, "${short}${s}", p.help); }
-            if (p.negatable) { offer(style, "${lead}no-${p.name}", "Undo ${lead}${p.name}."); }
+            if (p.negatable) { offer(style, "${lead}no-${p.name}", messages.text("complete.negate", ["option", "${lead}${p.name}"])); }
           }
-          let helpText = "Show this help and exit.";
+          let helpText = messages.text("builtin.help");
           if (style == Style.windows && command.builtInHelpQuestion) { offer(style, "${lead}?", helpText); }
           if (command.builtInHelpShort && style != Style.windows) { offer(style, "${short}h", helpText); }
           if (command.builtInHelpLong) { offer(style, "${lead}help", helpText); }
-          if (command.builtInVersion) { offer(style, "${lead}version", "Show the version and exit."); }
-          if (command.builtInCompletions) { offer(style, "${lead}completions", "Print a completion script for a shell and exit."); }
+          if (command.builtInVersion) { offer(style, "${lead}version", messages.text("builtin.version")); }
+          if (command.builtInCompletions) { offer(style, "${lead}completions", messages.text("complete.completions")); }
         }
       }
 

@@ -135,7 +135,8 @@ A version is the command's path and its version: `frob 1.2.0`, or
         if (kind == OutputKind.help) {
           command.help(width)
         } else if (kind == OutputKind.version) {
-          "${command.path} ${command.spec.version ?? ""}\n"
+          let line = command.messages.text("version", ["command", command.path, "version", command.spec.version ?? ""]);
+          "${line}\n"
         } else {
           content
         }
@@ -180,10 +181,15 @@ name, the usage of the command where it went wrong, and where to find
 more.
 
       public text(width: Int = 80): String {
+        let messages = command.messages;
         let name = command.top.spec.name;
         let ask = helpOption(command);
-        let more = if (ask != null) { "Try '${command.path} ${ask}' for more information.\n" } else { "" };
-        "${name}: ${message}\n${command.usage(width)}${more}"
+        let more = if (ask != null) {
+          let line = messages.text("error.tryHelp", ["command", command.path, "help", ask]);
+          "${line}\n"
+        } else { "" };
+        let report = messages.text("error.report", ["program", name, "message", message]);
+        "${report}\n${command.usage(width)}${more}"
       }
 
       public toString(): String { message }
@@ -361,6 +367,10 @@ The shell whose completion script was asked for, if any.
 
       public get current(): Level { levels[levels.length - 1] }
 
+A message from the command's [table](messages.temper.md).
+
+      private say(key: String, values: List<String>): String { top.messages.text(key, values) }
+
       public run(): ParseResult {
         scan();
         let help = helpFor;
@@ -407,8 +417,8 @@ positional arguments, the environment, and required options.
         if (early != null) { return early; }
         let last = current.command;
         if (!last.commands.isEmpty && !last.spec.commandOptional) {
-          let names = last.commands.join(", ") { (c: Command): String => c.spec.name };
-          fail(last, ErrorKind.missingCommand, "missing command; expected one of ${names}");
+          let names = top.messages.orList(last.commands.map { (c: Command): String => c.spec.name });
+          fail(last, ErrorKind.missingCommand, say("error.missingCommand", ["commands", names]));
         }
         for (let level of levels.toList()) { assignPositionals(level); }
         for (let level of levels.toList()) { readEnvironment(level); }
@@ -446,7 +456,7 @@ of the next argument to read.
             return helpPath(command, next);
           }
           if (!command.takesPositionals) {
-            fail(command, ErrorKind.unknownCommand, "unknown command '${arg}'${suggestCommand(command, arg)}");
+            fail(command, ErrorKind.unknownCommand, unknownCommand(command, arg));
             return next;
           }
         }
@@ -465,7 +475,7 @@ other styles), and `help` itself are skipped, so `frob help --help` is `frob`'s 
           if (asksForHelp(target, name) || (name == "help" && target.builtInHelpCommand)) { continue; }
           let sub = target.findCommand(name);
           if (sub == null) {
-            fail(target, ErrorKind.unknownCommand, "unknown command '${name}'${suggestCommand(target, name)}");
+            fail(target, ErrorKind.unknownCommand, unknownCommand(target, name));
             lost = true;
             return argv.length;
           }
@@ -476,7 +486,7 @@ other styles), and `help` itself are skipped, so `frob help --help` is `frob`'s 
         argv.length
       }
 
-      private suggestCommand(command: Command, typed: String): String {
+      private unknownCommand(command: Command, typed: String): String {
         let names = new ListBuilder<String>();
         for (let sub of command.commands) {
           names.add(sub.spec.name);
@@ -484,7 +494,11 @@ other styles), and `help` itself are skipped, so `frob help --help` is `frob`'s 
         }
         if (command.builtInHelpCommand) { names.add("help"); }
         let best = nearest(typed, names.toList());
-        if (best != null) { "; did you mean ${best}?" } else { "" }
+        if (best != null) {
+          say("error.unknownCommand.suggest", ["command", typed, "suggestion", best])
+        } else {
+          say("error.unknownCommand", ["command", typed])
+        }
       }
 
 ### Long options
@@ -512,32 +526,32 @@ a value it took.
             return takeLong(negated, name, inline, true, next);
           }
           if (negated != null) {
-            fail(command, ErrorKind.unknownOption, "unknown option --${name}; --${negated.name} can't be negated");
+            fail(command, ErrorKind.unknownOption, say("error.unknownOption.notNegatable", ["option", "--${name}", "flag", "--${negated.name}"]));
             return next;
           }
         }
         if (name == "help" && command.builtInHelpLong) {
-          if (inline != null) { fail(command, ErrorKind.unexpectedValue, "option --help takes no value"); }
+          if (inline != null) { fail(command, ErrorKind.unexpectedValue, say("error.unexpectedValue", ["option", "--help"])); }
           helpFor = command;
           return next;
         }
         if (name == "version" && command.builtInVersion) {
-          if (inline != null) { fail(command, ErrorKind.unexpectedValue, "option --version takes no value"); }
+          if (inline != null) { fail(command, ErrorKind.unexpectedValue, say("error.unexpectedValue", ["option", "--version"])); }
           versionFor = command;
           return next;
         }
         if (name == "completions" && command.builtInCompletions) {
           return shellOption(command, inline, next);
         }
-        let hint = belongsHint(command, name, Style.gnu, false, "--${name}");
-        fail(command, ErrorKind.unknownOption, "unknown option --${name}${hint ?? suggestLong(command, name)}");
+        let typed = "--${name}";
+        unknownOption(command, typed, typed, lateFor(command, name, Style.gnu, false), suggestLong(command, name));
         next
       }
 
       private takeLong(p: Param, typed: String, inline: String?, negated: Boolean, next: Int): Int {
         if (p.kind != ParamKind.option) {
           if (inline != null) {
-            fail(current.command, ErrorKind.unexpectedValue, "option --${typed} takes no value");
+            fail(current.command, ErrorKind.unexpectedValue, say("error.unexpectedValue", ["option", "--${typed}"]));
           } else {
             occur(p, negated);
           }
@@ -572,9 +586,13 @@ a value it took.
           } else if (c == "h" && command.builtInHelpShort) {
             helpFor = command;
           } else {
-            let within = if (arg.hasAtLeast(String.begin, arg.end, 3)) { " in ${arg}" } else { "" };
-            let hint = belongsHint(command, c, Style.gnu, true, "-${c}");
-            fail(command, ErrorKind.unknownOption, "unknown option -${c}${within}${hint ?? suggestFromShort(command, arg)}");
+            let typed = "-${c}";
+            let shown = if (arg.hasAtLeast(String.begin, arg.end, 3)) {
+              say("error.inBundle", ["option", typed, "bundle", arg])
+            } else {
+              typed
+            };
+            unknownOption(command, shown, typed, lateFor(command, c, Style.gnu, true), suggestFromShort(command, arg));
             return next;
           }
           i = after;
@@ -604,7 +622,7 @@ value after `=` or (in `windows`) `:`.
             return takeNamed(negated, typed, inline, true, next);
           }
           if (negated != null) {
-            fail(command, ErrorKind.unknownOption, "unknown option ${typed}; ${parts.prefix}${negated.name} can't be negated");
+            fail(command, ErrorKind.unknownOption, say("error.unknownOption.notNegatable", ["option", typed, "flag", "${parts.prefix}${negated.name}"]));
             return next;
           }
         }
@@ -612,30 +630,28 @@ value after `=` or (in `windows`) `:`.
           (sameName(name, "h", ic) && command.builtInHelpShort) ||
           (name == "?" && style == Style.windows && command.builtInHelpQuestion);
         if (help) {
-          if (inline != null) { fail(command, ErrorKind.unexpectedValue, "option ${typed} takes no value"); }
+          if (inline != null) { fail(command, ErrorKind.unexpectedValue, say("error.unexpectedValue", ["option", typed])); }
           helpFor = command;
           return next;
         }
         if (sameName(name, "version", ic) && command.builtInVersion) {
-          if (inline != null) { fail(command, ErrorKind.unexpectedValue, "option ${typed} takes no value"); }
+          if (inline != null) { fail(command, ErrorKind.unexpectedValue, say("error.unexpectedValue", ["option", typed])); }
           versionFor = command;
           return next;
         }
         if (sameName(name, "completions", ic) && command.builtInCompletions) {
           return shellOption(command, inline, next);
         }
-        let hint = belongsHint(command, name, style, false, typed);
-        var suggestion = "";
         let best = nearest(name, longNames(command));
-        if (best != null) { suggestion = "; did you mean ${parts.prefix}${best}?"; }
-        fail(command, ErrorKind.unknownOption, "unknown option ${typed}${hint ?? suggestion}");
+        let suggestion = if (best != null) { "${parts.prefix}${best}" } else { null };
+        unknownOption(command, typed, typed, lateFor(command, name, style, false), suggestion);
         next
       }
 
       private takeNamed(p: Param, typed: String, inline: String?, negated: Boolean, next: Int): Int {
         if (p.kind != ParamKind.option) {
           if (inline != null) {
-            fail(current.command, ErrorKind.unexpectedValue, "option ${typed} takes no value");
+            fail(current.command, ErrorKind.unexpectedValue, say("error.unexpectedValue", ["option", typed]));
           } else {
             occur(p, negated);
           }
@@ -665,14 +681,13 @@ errors other than asking for help.
           after = next + 1;
         } else {
           if (next >= argv.length) { pendingShell = true; }
-          fail(command, ErrorKind.missingValue, "option ${shown} needs a value");
+          fail(command, ErrorKind.missingValue, say("error.missingValue", ["option", shown]));
           return next;
         }
         let shell = Shell.named(name);
         if (shell == null) {
-          let near = nearest(name, shellNames);
-          let suggestion = if (near != null) { "; did you mean ${near}?" } else { "" };
-          fail(command, ErrorKind.invalidValue, "invalid value '${name}' for ${shown}: expected one of ${shellNames.join(", ") { (n: String): String => n }}${suggestion}");
+          let expected = say("expected.oneOf", ["choices", top.messages.orList(shellNames)]);
+          fail(command, ErrorKind.invalidValue, invalidValueMessage(top.messages, name, shown, null, expected, nearest(name, shellNames)));
         } else if (scriptShell == null) {
           scriptShell = shell;
         }
@@ -683,17 +698,34 @@ errors other than asking for help.
 
 An option a command above declared, but didn't make `inherited`, given
 after a subcommand's name gets a hint instead of a suggestion: "unknown
-option --dir; --dir belongs to frob, so give it before add".
+option --dir; --dir belongs to frob, so give it before add". `lateFor`
+finds the subcommand to give it before, whose parent declared it, if
+any.
 
-      private belongsHint(command: Command, name: String, style: Style, asShort: Boolean, typed: String): String? {
+      private lateFor(command: Command, name: String, style: Style, asShort: Boolean): Command? {
         var below = command;
         for (let ancestor of command.ancestors) {
           if (findIn(ancestor.declared, name, style, asShort) != null) {
-            return "; ${typed} belongs to ${ancestor.path}, so give it before ${below.spec.name}";
+            return below;
           }
           below = ancestor;
         }
         null
+      }
+
+An unknown option's error: `shown` as typed (or within a bundle), with
+the hint for an option given too late, if any, or else the suggestion.
+
+      private unknownOption(command: Command, shown: String, typed: String, late: Command?, suggestion: String?): Void {
+        let message = if (late != null) {
+          let owner = late.parent ?? panic();
+          say("error.unknownOption.late", ["option", shown, "name", typed, "command", owner.path, "subcommand", late.spec.name])
+        } else if (suggestion != null) {
+          say("error.unknownOption.suggest", ["option", shown, "suggestion", suggestion])
+        } else {
+          say("error.unknownOption", ["option", shown])
+        };
+        fail(command, ErrorKind.unknownOption, message);
       }
 
 ### Values
@@ -713,11 +745,11 @@ first style.
           }
           let attached = "${shown}${command.style.joiner}${candidate}";
           let lead = if (startsWith(candidate, "/")) { "/" } else { "-" };
-          fail(command, ErrorKind.missingValue, "option ${shown} needs a value; to give one starting with '${lead}', write ${attached}");
+          fail(command, ErrorKind.missingValue, say("error.missingValue.attached", ["option", shown, "lead", lead, "attached", attached]));
           return next;
         }
         pending = p;
-        fail(command, ErrorKind.missingValue, "option ${shown} needs a value");
+        fail(command, ErrorKind.missingValue, say("error.missingValue", ["option", shown]));
         next
       }
 
@@ -869,9 +901,9 @@ earliest lists that take more.
           for (let g of groups) {
             if (left < g.min) {
               let message = if (g.min == 1) {
-                "missing argument ${g.name}"
+                say("error.missingArgument", ["name", g.name])
               } else {
-                "missing argument ${g.name}: needs at least ${g.min}, got ${left.max(0)}"
+                say("error.tooFewArguments", ["name", g.name, "min", g.min.toString(), "count", left.max(0).toString()])
               };
               fail(command, ErrorKind.tooFewPositionals, message);
               return;
@@ -898,7 +930,7 @@ earliest lists that take more.
           at += take;
         }
         if (at < texts.length) {
-          fail(command, ErrorKind.tooManyPositionals, "unexpected argument '${texts[at]}'");
+          fail(command, ErrorKind.tooManyPositionals, say("error.unexpectedArgument", ["argument", texts[at]]));
         }
       }
 
@@ -919,14 +951,14 @@ that is set and not empty.
           if (p.kind == ParamKind.flag) {
             let b = parseBoolean(text) orelse null;
             if (b == null) {
-              fail(command, ErrorKind.invalidValue, "invalid value '${text}' for ${longForm(command.style, p)} from ${name}: expected ${booleanExpected}");
+              fail(command, ErrorKind.invalidValue, invalidValueMessage(top.messages, text, longForm(command.style, p), name, p.expected(top.messages), null));
               continue;
             }
             level.values[p.index].add(if (b) { "true" } else { "false" });
           } else if (p.kind == ParamKind.count) {
             let n = ints.parse(text) orelse -1;
             if (n < 0) {
-              fail(command, ErrorKind.invalidValue, "invalid value '${text}' for ${longForm(command.style, p)} from ${name}: expected a count");
+              fail(command, ErrorKind.invalidValue, invalidValueMessage(top.messages, text, longForm(command.style, p), name, p.expected(top.messages), null));
               continue;
             }
             level.values[p.index].add(n.toString());
@@ -944,8 +976,14 @@ that is set and not empty.
       private checkRequired(level: Level): Void {
         for (let p of level.command.declared) {
           if (p.kind == ParamKind.option && p.required && level.values[p.index].length == 0) {
-            let orEnv = if (p.env != null) { " (or ${p.env})" } else { "" };
-            fail(level.command, ErrorKind.missingRequired, "missing required option ${longForm(level.command.style, p)}${orEnv}");
+            let shown = longForm(level.command.style, p);
+            let env = p.env;
+            let message = if (env != null) {
+              say("error.missingRequired.env", ["option", shown, "env", env])
+            } else {
+              say("error.missingRequired", ["option", shown])
+            };
+            fail(level.command, ErrorKind.missingRequired, message);
           }
         }
       }
@@ -958,24 +996,24 @@ most a third of the typed name's length (at least 1). Ties go to the
 earliest declared. `--no-NAME` for a flag that isn't negatable says
 so instead.
 
-      private suggestLong(command: Command, typed: String): String {
+      private suggestLong(command: Command, typed: String): String? {
         let names = longNames(command);
         let best = nearest(typed, names);
-        if (best != null) { return "; did you mean --${best}?"; }
+        if (best != null) { return "--${best}"; }
         // `--v` for `-v`.
         if (codePointCount(typed) == 1 && command.findShort(typed) != null) {
-          return "; did you mean -${typed}?";
+          return "-${typed}";
         }
-        ""
+        null
       }
 
 `-verbose`, with one dash, for `--verbose`.
 
-      private suggestFromShort(command: Command, arg: String): String {
+      private suggestFromShort(command: Command, arg: String): String? {
         let word = dropFirst(arg, 1);
-        if (!word.hasAtLeast(String.begin, word.end, 2)) { return ""; }
+        if (!word.hasAtLeast(String.begin, word.end, 2)) { return null; }
         let best = nearest(word, longNames(command));
-        if (best != null) { "; did you mean --${best}?" } else { "" }
+        if (best != null) { "--${best}" } else { null }
       }
 
       private longNames(command: Command): List<String> {
@@ -1039,10 +1077,18 @@ command's first style, or null when the program took help's names.
 
     let invalidMessage(p: Param, text: String, envName: String?): String {
       let what = if (p.kind == ParamKind.positional) { p.name } else { longForm(p.command.style, p) };
-      let from = if (envName != null) { " from ${envName}" } else { "" };
-      let near = nearest(text, p.choices);
-      let suggestion = if (near != null) { "; did you mean ${near}?" } else { "" };
-      "invalid value '${text}' for ${what}${from}: expected ${p.expected}${suggestion}"
+      let messages = p.command.messages;
+      invalidValueMessage(messages, text, what, envName, p.expected(messages), nearest(text, p.choices))
+    }
+
+A value its type doesn't take, for `what` (the option or positional
+argument), from an argument or the environment variable `envName`,
+with the nearest valid value if there's one close enough.
+
+    let invalidValueMessage(messages: MessageTable, text: String, what: String, envName: String?, expected: String, suggestion: String?): String {
+      let values = ["value", text, "option", what, "expected", expected, "env", envName ?? "", "suggestion", suggestion ?? ""];
+      let key = if (envName != null) { "error.invalidEnvValue" } else { "error.invalidValue" };
+      messages.text(if (suggestion != null) { "${key}.suggest" } else { key }, values)
     }
 
 The nearest candidate, as `suggestLong` describes, or null.

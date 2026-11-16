@@ -146,6 +146,25 @@ if let Some(args) = temper_core::cast::<Args>(result.clone()) { args.get_value(l
   `clone_boxed`, and `temper_core::impl_any_value_trait!`.
 - Commands compare with `==`.
 
+## Messages
+
+A program's own [messages](design.md#messages) read the same way
+everywhere: `setMessage(key, template)` takes two strings
+(`set_message` in Python and Rust, with `Arc<String>`s in Rust, and
+`SetMessage` in C#). `setMessages`, for a whole table, takes the
+language's own map in Python (any `Mapping`, such as a `dict`), Java
+(`Map`), C# (`IReadOnlyDictionary`), and JavaScript (`Map`), but
+Temper's map types in C++, Lua, and Rust, where a loop calling
+`setMessage` is simpler:
+
+```python
+cli.set_messages({"usage": "Aufruf: {command}", "help.options": "Optionen:"})
+```
+
+```lua
+for key, template in pairs(GERMAN) do cli:setMessage(key, template) end
+```
+
 ## Worth changing
 
 Changed already: subcommands are declared with `subcommand`, matching

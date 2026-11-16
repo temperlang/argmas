@@ -198,10 +198,6 @@ The default, as help shows it, if there is one.
       public defaultText: String?,
       public choices: List<String>,
 
-What a valid value looks like, for errors.
-
-      public expected: String,
-
 Where the parsed result keeps its values.
 
       public index: Int,
@@ -216,6 +212,10 @@ The command that declared it.
 Whether `text` is a valid value.
 
       public accepts(text: String): Boolean { checker.accepts(text) }
+
+What a valid value looks like, for errors, in `messages`.
+
+      public expected(messages: MessageTable): String { checker.expected(messages) }
 
 How a shell completes a value starting with `partial`: from the
 spec's completer, if any, or else as its value type says.
@@ -246,6 +246,7 @@ value's type, with a `Checker`.
     export interface Checker {
       public accepts(text: String): Boolean;
       public complete(partial: String): Completion;
+      public expected(messages: MessageTable): String;
     }
 
     class TypeChecker<T>(private type: ValueType<T>) extends Checker {
@@ -253,9 +254,14 @@ value's type, with a `Checker`.
         do { type.parse(text); true } orelse false
       }
       public complete(partial: String): Completion { type.complete(partial) }
+      public expected(messages: MessageTable): String { type.expectedIn(messages) }
     }
 
-    class NoValueChecker extends Checker {
+Flags take no value on the command line; `expectedKey` is the message
+for what their environment variable holds.
+
+    class NoValueChecker(private expectedKey: String) extends Checker {
+      public expected(messages: MessageTable): String { messages.text(expectedKey) }
       public accepts(text: String): Boolean { false }
       public complete(partial: String): Completion { new Completion([], Directive.none, "") }
     }
@@ -390,6 +396,11 @@ names it answers to, all set by `subcommand`.
       private var otherNames: List<String> = [];
       private var hiddenNames: List<String> = [];
 
+The [messages](messages.temper.md) of the command tree, used only in
+the top command.
+
+      private table: MessageTable = new MessageTable();
+
 Every argument declared, in order.
 
       public get declared(): List<Param> { params.toList() }
@@ -407,13 +418,13 @@ A flag: true when given, false when not (or as its environment
 variable says).
 
       public flag(spec: FlagSpec): Arg<Boolean> {
-        new Flag(addParam(ParamKind.flag, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, false, 0, 0, null, [], booleanExpected, new NoValueChecker(), null))
+        new Flag(addParam(ParamKind.flag, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, false, 0, 0, null, [], new NoValueChecker("expected.boolean"), null))
       }
 
 A counted flag: the number of times it's given, so `-vvv` is 3.
 
       public count(spec: FlagSpec): Arg<Int> {
-        new Counter(addParam(ParamKind.count, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, true, 0, 0, null, [], "a count", new NoValueChecker(), null))
+        new Counter(addParam(ParamKind.count, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, true, 0, 0, null, [], new NoValueChecker("expected.count"), null))
       }
 
 An option that may be left out; its value is null then. Given more
@@ -460,24 +471,24 @@ takes more, so `SRC... DEST` works.
 
       private optionParam<T>(type: ValueType<T>, spec: OptionSpec, required: Boolean, repeated: Boolean, defaultText: String?): Param {
         let valueName = spec.valueName ?? asciiUpper(spec.name);
-        addParam(ParamKind.option, spec.name, spec.short, spec.help, spec.env, valueName, false, spec.inherited, required, repeated, 0, 0, defaultText, type.choices, type.expected, new TypeChecker<T>(type), spec.completer)
+        addParam(ParamKind.option, spec.name, spec.short, spec.help, spec.env, valueName, false, spec.inherited, required, repeated, 0, 0, defaultText, type.choices, new TypeChecker<T>(type), spec.completer)
       }
 
       private positionalParam<T>(type: ValueType<T>, name: String, help: String, min: Int, max: Int?, completer: Completer?): Param {
         if (min < 0 || (max != null && max < min) || max == 0) {
           specProblems.add("positional ${name} allows no count of arguments");
         }
-        addParam(ParamKind.positional, name, null, help, null, name, false, false, min > 0, true, min, max, null, type.choices, type.expected, new TypeChecker<T>(type), completer)
+        addParam(ParamKind.positional, name, null, help, null, name, false, false, min > 0, true, min, max, null, type.choices, new TypeChecker<T>(type), completer)
       }
 
       private addParam(
         kind: ParamKind, name: String, short: String?, help: String, env: String?,
         valueName: String, negatable: Boolean, inherited: Boolean, required: Boolean,
         repeated: Boolean, min: Int, max: Int?, defaultText: String?,
-        choiceList: List<String>, expected: String, checker: Checker, completer: Completer?,
+        choiceList: List<String>, checker: Checker, completer: Completer?,
       ): Param {
         checkNames(kind, name, short);
-        let p = new Param(kind, name, short, help, env, valueName, negatable, inherited, required, repeated, min, max, defaultText, choiceList, expected, params.length, checker, completer, this);
+        let p = new Param(kind, name, short, help, env, valueName, negatable, inherited, required, repeated, min, max, defaultText, choiceList, params.length, checker, completer, this);
         params.add(p);
         p
       }
@@ -526,6 +537,31 @@ parsing its top command with the subcommand's path first:
 
       public help(width: Int = 80): String { helpText(this, width) }
 
+## Messages
+
+Every text Argmas writes itself comes from one
+[table of messages](messages.temper.md), English unless the program
+sets its own. `setMessage` replaces the message for `key`, such as
+`error.unknownOption.suggest`, with `template`, which may use that
+key's placeholders, such as `{option}`, in any order; `setMessages`
+does so for every entry in `templates`, such as a whole translation.
+Messages belong to the whole command tree, so a subcommand's are its
+top command's. A key or placeholder Argmas doesn't have is a mistake
+in the spec, which `parse` reports.
+
+      public setMessage(key: String, template: String): Void {
+        top.table.set(key, template);
+      }
+
+      public setMessages(templates: Mapped<String, String>): Void {
+        let messageTable = top.table;
+        templates.forEach { (key: String, template: String): Void => messageTable.set(key, template); }
+      }
+
+The messages in use, for writing them.
+
+      public get messages(): MessageTable { top.table }
+
 What a shell offers for the word at `index` in `words`, the arguments
 typed so far (without the program's name), as
 [completions](complete.temper.md) describes; by default, for the last
@@ -551,7 +587,7 @@ does.
 
       public completionScript(shell: Shell): String { top.scriptFor(shell) }
 
-      private scriptFor(shell: Shell): String { shellScript(shell, spec.name) }
+      private scriptFor(shell: Shell): String { shellScript(shell, spec.name, table) }
 
       public usage(width: Int = 80): String { usageText(this, width) }
 
@@ -758,6 +794,9 @@ has the name of one its parents declared `inherited`.
       private collectProblems(out: ListBuilder<String>): Void {
         let location = if (up != null) { " in ${path}" } else { "" };
         for (let problem of specProblems.toList()) { out.add("${problem}${location}"); }
+        if (up == null) {
+          for (let problem of table.problems) { out.add(problem); }
+        }
         for (let ancestor of ancestors) {
           for (let q of ancestor.declared) {
             if (!q.inherited || q.kind == ParamKind.positional) { continue; }

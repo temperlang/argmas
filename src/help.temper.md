@@ -51,6 +51,7 @@ The help puts these together.
     let helpText(command: Command, width: Int): String {
       let out = new StringBuilder();
       let spec = command.spec;
+      let messages = command.messages;
       if (!spec.about.isEmpty) {
         for (let line of wrapWords(spec.about, width)) {
           out.append("${line}\n");
@@ -62,12 +63,12 @@ The help puts these together.
       let commands = new ListBuilder<HelpItem>();
       for (let sub of command.commands) {
         let notes = if (sub.aliases.isEmpty) { [] } else {
-          ["[aliases: ${sub.aliases.join(", ") { (a: String): String => a }}]"]
+          [messages.text("help.aliases", ["aliases", messages.list(sub.aliases)])]
         };
         commands.add(new HelpItem("  ${sub.spec.name}", sub.spec.about, notes));
       }
       if (command.builtInHelpCommand) {
-        commands.add(new HelpItem("  help", "Show help for a command.", []));
+        commands.add(new HelpItem("  help", messages.text("builtin.helpCommand"), []));
       }
       let arguments = new ListBuilder<HelpItem>();
       for (let p of command.declared) {
@@ -78,7 +79,7 @@ The help puts these together.
       let style = command.style;
       let options = new ListBuilder<HelpItem>();
       for (let p of command.options) {
-        options.add(new HelpItem(optionLeft(p, style), p.help, annotations(p)));
+        options.add(new HelpItem(optionLeft(p, style), p.help, annotations(p, messages)));
       }
       let helpShort = if (style == Style.windows && command.builtInHelpQuestion) {
         "?"
@@ -94,15 +95,17 @@ The help puts these together.
         } else {
           shortPart
         };
-        options.add(new HelpItem(left, "Show this help and exit.", []));
+        options.add(new HelpItem(left, messages.text("builtin.help"), []));
       }
       if (command.builtInVersion) {
-        options.add(new HelpItem("      ${style.prefix}version", "Show the version and exit.", []));
+        options.add(new HelpItem("      ${style.prefix}version", messages.text("builtin.version"), []));
       }
       if (command.builtInCompletions) {
-        let shellForm = if (style == Style.windows) { ":<SHELL>" } else { " <SHELL>" };
-        let names = shellNames.join(", ") { (n: String): String => n };
-        options.add(new HelpItem("      ${style.prefix}completions${shellForm}", "Print a completion script for SHELL and exit.", ["[choices: ${names}]"]));
+        let shell = messages.text("builtin.completionsValue");
+        let shellForm = if (style == Style.windows) { ":<${shell}>" } else { " <${shell}>" };
+        let choicesNote = messages.text("help.choices", ["choices", messages.list(shellNames)]);
+        let about = messages.text("builtin.completions", ["shell", shell]);
+        options.add(new HelpItem("      ${style.prefix}completions${shellForm}", about, [choicesNote]));
       }
 
       var longest = 0;
@@ -112,14 +115,14 @@ The help puts these together.
       let column = (longest + 2).min((width * 2 / 5).max(16));
 
       if (!commands.isEmpty) {
-        out.append("\nCommands:\n");
+        out.append("\n${messages.text("help.commands")}\n");
         for (let item of commands.toList()) { appendItem(out, item, column, width); }
       }
       if (!arguments.isEmpty) {
-        out.append("\nArguments:\n");
+        out.append("\n${messages.text("help.arguments")}\n");
         for (let item of arguments.toList()) { appendItem(out, item, column, width); }
       }
-      out.append("\nOptions:\n");
+      out.append("\n${messages.text("help.options")}\n");
       for (let item of options.toList()) { appendItem(out, item, column, width); }
       out.toString()
     }
@@ -159,12 +162,13 @@ one line.
 ## The usage line
 
     let usageText(command: Command, width: Int): String {
+      let messages = command.messages;
       let units = new ListBuilder<String>();
       var anyOptional = command.builtInHelpLong || command.builtInHelpShort || command.builtInVersion;
       for (let p of command.options) {
         if (!p.required) { anyOptional = true; }
       }
-      if (anyOptional) { units.add("[OPTIONS]"); }
+      if (anyOptional) { units.add(messages.text("usage.options")); }
       let style = command.style;
       for (let p of command.options) {
         if (p.kind == ParamKind.option && p.required) {
@@ -175,9 +179,9 @@ one line.
         if (p.kind == ParamKind.positional) { units.add(positionalForm(p, true)); }
       }
       if (!command.commands.isEmpty) {
-        units.add(if (command.spec.commandOptional) { "[COMMAND]" } else { "COMMAND" });
+        units.add(messages.text(if (command.spec.commandOptional) { "usage.optionalCommand" } else { "usage.command" }));
       }
-      let lead = "Usage: ${command.path}";
+      let lead = messages.text("usage", ["command", command.path]);
       let indent = spaces((codePointCount(lead) + 1).min(width / 2));
       let out = new StringBuilder();
       out.append(lead);
@@ -229,17 +233,17 @@ An option's names in `style`: `-l, --level <LEVEL>` in `gnu`,
       }
     }
 
-    let annotations(p: Param): List<String> {
+    let annotations(p: Param, messages: MessageTable): List<String> {
       let out = new ListBuilder<String>();
       let fallback = p.defaultText;
-      if (fallback != null) { out.add("[default: ${fallback}]"); }
+      if (fallback != null) { out.add(messages.text("help.default", ["value", fallback])); }
       let env = p.env;
-      if (env != null) { out.add("[env: ${env}]"); }
+      if (env != null) { out.add(messages.text("help.env", ["name", env])); }
       if (!p.choices.isEmpty) {
-        out.add("[choices: ${p.choices.join(", ") { (c: String): String => c }}]");
+        out.add(messages.text("help.choices", ["choices", messages.list(p.choices)]));
       }
-      if (p.required) { out.add("[required]"); }
-      if (p.repeated) { out.add("[repeatable]"); }
+      if (p.required) { out.add(messages.text("help.required")); }
+      if (p.repeated) { out.add(messages.text("help.repeatable")); }
       out.toList()
     }
 

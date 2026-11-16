@@ -6,8 +6,8 @@ help, clear errors with suggestions, and shell completions, with the same
 behavior in C++, C#, Java, JavaScript, Lua, Python, and Rust.
 
 **Status: early.** Options, flags, positional arguments, environment
-fallbacks, subcommands, argument styles, help, errors, and shell
-completions work.
+fallbacks, subcommands, argument styles, help, errors, shell
+completions, and a message table for translations work.
 See [docs/design.md](docs/design.md). It stays beta until Temper's
 translations reach 1.0, and the API may change.
 
@@ -141,6 +141,51 @@ passes the arguments and, for environment variables, an `Environment`.
 The [design](docs/design.md) has how each corner case is decided,
 from `-` alone to negative numbers.
 
+## Messages and translations
+
+Everything Argmas writes itself, from `Usage:` and `Options:` to each
+error, suggestion, and completion script's comment, comes from one
+table of messages, in English unless the program sets its own. Each
+message has a stable key and named placeholders, so a translation can
+put them in its own order:
+
+```temper
+let cli = new Command({ name: "frob" });
+cli.setMessage("usage", "Aufruf: {command}");
+cli.setMessage("error.unknownOption.suggest", "unbekannte Option {option}; meinten Sie {suggestion}?");
+// Or many at once, such as a whole table: cli.setMessages(german), a Map.
+```
+
+Messages not set stay English. A key or placeholder Argmas doesn't
+have is reported as a mistake in the spec on the first run, so typos
+can't ship. The [design](docs/design.md#messages) lists every key with
+its English text. What the program declares itself, such as help for
+its options, is the program's to translate.
+
+Argmas never reads the environment for a language; the program picks
+a table and passes it. On Linux and macOS, the language is in the
+first set of `LC_ALL`, `LC_MESSAGES`, and `LANG`, as in
+`de_DE.UTF-8`; `C` and `POSIX` mean the default. On Windows, it's the
+user's display language (`GetUserDefaultUILanguage`, or .NET's
+`CultureInfo.CurrentUICulture`). In Python, for example:
+
+```python
+import os, sys
+
+def language():
+    if sys.platform == "win32":
+        import ctypes, locale
+        return locale.windows_locale.get(ctypes.windll.kernel32.GetUserDefaultUILanguage(), "")
+    for name in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        if os.environ.get(name):
+            return os.environ[name].split(".")[0].split("@")[0]  # de_DE
+    return ""
+
+table = TABLES.get(language().split("_")[0])  # your tables, by language
+if table:
+    cli.set_messages(table)
+```
+
 ## Languages
 
 Made in Temper, Argmas supports these languages, and its tests run on
@@ -173,8 +218,8 @@ Or on every backend:
 
 Source files in `src/` are literate Markdown: `command.temper.md`
 declares commands and their arguments, `parse.temper.md` parses,
-`help.temper.md` writes help, `style.temper.md` has the argument
-styles, `values.temper.md` has the value types, `complete.temper.md`
+`help.temper.md` writes help, `messages.temper.md` has the
+messages, `style.temper.md` has the argument styles, `values.temper.md` has the value types, `complete.temper.md`
 answers completions, and `shells.temper.md` has the shells' scripts,
 with tests beside them in `-tests` files and subcommands' tests in
 `subcommand-tests.temper.md`. `tour-tests.temper.md` checks the
