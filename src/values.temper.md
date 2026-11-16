@@ -3,7 +3,8 @@
 An option's or positional argument's value arrives as text. A *value
 type* turns that text into a typed value, or says what it expected
 instead, for the error message. Argmas has `ints`, `floats`, `strings`,
-and `choices([...])`; any other type implements `ValueType`.
+`paths`, `directories`, and `choices([...])`; any other type implements
+`ValueType`.
 
     export interface ValueType<T> {
 
@@ -25,6 +26,25 @@ The values allowed, when there's a fixed list, for help and
 suggestions; empty when any value that parses is allowed.
 
       public get choices(): List<String> { [] }
+
+How a shell [completes](complete.temper.md) a value that starts with
+`partial`: by default, the choices that start with it, if there's a
+list, and nothing otherwise. A type can offer values found when the
+program runs, or ask the shell to complete files or directories.
+
+      public complete(partial: String): Completion {
+        new Completion(choicesStarting(choices, partial), Directive.none, "")
+      }
+    }
+
+The choices that start with `partial`, as candidates.
+
+    let choicesStarting(choiceList: List<String>, partial: String): List<Candidate> {
+      let out = new ListBuilder<Candidate>();
+      for (let c of choiceList) {
+        if (startsWith(c, partial)) { out.add(new Candidate(c, "")); }
+      }
+      out.toList()
     }
 
 ## Integers
@@ -145,14 +165,27 @@ and digits on both sides of a point.
 
 ## Strings
 
-`strings` takes any text, including the empty string.
+`strings` takes any text, including the empty string. Shells complete
+it as files, as they do arguments they know nothing about, since text
+arguments are so often paths.
 
-    export let strings: ValueType<String> = new StringType();
+    export let strings: ValueType<String> = new StringType(Directive.files);
 
-    class StringType extends ValueType<String> {
+## Paths
+
+`paths` and `directories` take any text too, as `strings` does, and
+say what it names, so shells complete files or only directories. They
+don't check the text: what makes a path valid differs by platform, and
+whether it exists may change before the program reads it.
+
+    export let paths: ValueType<String> = new StringType(Directive.files);
+    export let directories: ValueType<String> = new StringType(Directive.directories);
+
+    class StringType(private directive: Directive) extends ValueType<String> {
       public get expected(): String { "text" }
       public parse(text: String): String throws Bubble { text }
       public format(value: String): String { value }
+      public complete(partial: String): Completion { new Completion([], directive, "") }
     }
 
 ## Choices

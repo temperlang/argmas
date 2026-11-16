@@ -314,6 +314,47 @@ namespace, and in `windows`, names differing only in case clash.
       assert(outcome(e.parse([])) == "invalidSpec: invalid command spec: /VERBOSE declared twice in e t");
     }
 
+With `gnu` and another style, a long name that is also a `gnu` bundle
+of known short options is a mistake: flags, or flags and then an
+option with its value next. A short option with letters after it is
+the long name, as decided, so `-level` with `-l` is fine.
+
+    test("long names that read as bundles") {
+      let a = new Command({ name: "a", alsoStyle: Style.singleDash });
+      a.flag({ name: "verbose", short: "v" });
+      a.flag({ name: "quiet", short: "q" });
+      a.flag({ name: "vq" });
+      assert(outcome(a.parse([])) == "invalidSpec: invalid command spec: long name vq could also be read as -v -q");
+      let b = new Command({ name: "b", style: Style.windows, alsoStyle: Style.gnu });
+      b.flag({ name: "verbose", short: "v" });
+      b.option(strings, { name: "out", short: "o" });
+      b.option(strings, { name: "vo" });
+      assert(outcome(b.parse([])) == "invalidSpec: invalid command spec: long name vo could also be read as -v -o");
+      let c = new Command({ name: "c", alsoStyle: Style.singleDash });
+      c.option(strings, { name: "level", short: "l" });
+      c.flag({ name: "lx" });
+      assert(outcome(c.parse([])) == "ok");
+      // One style can't be read two ways.
+      let d = new Command({ name: "d" });
+      d.flag({ name: "verbose", short: "v" });
+      d.flag({ name: "quiet", short: "q" });
+      d.flag({ name: "vq" });
+      assert(outcome(d.parse([])) == "ok");
+      // Built-in names and -h count too.
+      let e = new Command({ name: "e", alsoStyle: Style.singleDash });
+      e.flag({ name: "e", short: "e" });
+      e.flag({ name: "l", short: "l" });
+      e.flag({ name: "p", short: "p" });
+      assert(outcome(e.parse([])) == "invalidSpec: invalid command spec: long name help could also be read as -h -e -l -p");
+      // An inherited long name meets a subcommand's short names there.
+      let f = new Command({ name: "f", alsoStyle: Style.singleDash });
+      f.flag({ name: "vq", inherited: true });
+      let s = f.command({ name: "s" });
+      s.flag({ name: "verbose", short: "v" });
+      s.flag({ name: "quiet", short: "q" });
+      assert(outcome(f.parse([])) == "invalidSpec: invalid command spec: long name vq could also be read as -v -q in f s");
+    }
+
 ## Help text
 
 Help and usage lines write options in the first style.

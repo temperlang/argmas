@@ -100,3 +100,20 @@ The styles example.
       assert((go.parse(["-level=5"]) as Args orelse panic()).get(level) == 5);
       assert((go.parse(["-level", "5"]) as Args orelse panic()).get(level) == 5);
     }
+
+The completions example.
+
+    test("completions tour") {
+      let cli = new Command({ name: "frob", completions: true });
+      let verbose = cli.flag({ name: "verbose", short: "v", help: "Say more." });
+      let mode = cli.option(choices(["fast", "slow"]), { name: "mode", help: "How to go about it." });
+      let out = cli.option(paths, { name: "out", help: "Where to write." });
+      assert(cli.complete(["--v"]).text() == "--verbose\tSay more.\n:none\n");
+      assert(cli.complete(["--mode", ""]).text() == "fast\nslow\n:none\n");
+      assert(cli.complete(["--out="]).text() == ":files --out=\n");
+      let answer = cli.parse(["__complete", "0", "--v"]) as Output orelse panic();
+      assert(answer.text() == cli.complete(["--v"]).text());
+      let script = cli.parse(["--completions", "bash"]) as Output orelse panic();
+      assert(script.text() == cli.completionScript(Shell.bash));
+      assert(verbose.param.name == "verbose" && mode.param.name == "mode" && out.param.name == "out");
+    }

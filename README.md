@@ -6,8 +6,8 @@ help, clear errors with suggestions, and shell completions, with the same
 behavior in C++, C#, Java, JavaScript, Lua, Python, and Rust.
 
 **Status: early.** Options, flags, positional arguments, environment
-fallbacks, subcommands, argument styles, help, and errors work;
-completions are next.
+fallbacks, subcommands, argument styles, help, errors, and shell
+completions work.
 See [docs/design.md](docs/design.md). It stays beta until Temper's
 translations reach 1.0, and the API may change.
 
@@ -96,6 +96,44 @@ args.get(out);     // "C:\\x.txt"
 //   /?, /help       Show this help and exit.
 ```
 
+Shells complete command lines by asking the program, through a short
+script Argmas prints for bash, zsh, fish, and PowerShell, so
+completions always match what the program accepts, values included:
+
+```temper
+let cli = new Command({ name: "frob", completions: true });
+let verbose = cli.flag({ name: "verbose", short: "v", help: "Say more." });
+let mode = cli.option(choices(["fast", "slow"]), { name: "mode", help: "How to go about it." });
+let out = cli.option(paths, { name: "out", help: "Where to write." });
+
+// What a shell gets for `frob --v<Tab>`, `frob --mode <Tab>`, and
+// `frob --out=<Tab>`: candidates, with descriptions, then what else
+// the shell should complete.
+cli.complete(["--v"]).text();        // "--verbose\tSay more.\n:none\n"
+cli.complete(["--mode", ""]).text(); // "fast\nslow\n:none\n"
+cli.complete(["--out="]).text();     // ":files --out=\n": files, after --out=
+```
+
+The script runs `frob __complete INDEX WORD...` as the user presses
+Tab, which `cli.parse` answers with an `Output`, so a program that
+prints `Output` already serves completions. With `completions: true`,
+`frob --completions SHELL` prints the script (or a program prints
+`cli.completionScript(Shell.bash)` its own way). Argmas only prints
+it; users install it where their shell looks:
+
+| Shell | Install |
+|---|---|
+| bash 4.4+ | `frob --completions bash > ~/.local/share/bash-completion/completions/frob` (with the bash-completion package), or `source <(frob --completions bash)` in `~/.bashrc` |
+| zsh | `frob --completions zsh > ~/.zfunc/_frob`, with `fpath=(~/.zfunc $fpath)` before `compinit` in `~/.zshrc` |
+| fish | `frob --completions fish > ~/.config/fish/completions/frob.fish` |
+| PowerShell 5.1+ | `frob --completions powershell \| Out-String \| Invoke-Expression` in your profile (`$PROFILE`) |
+
+zsh, fish, and PowerShell show descriptions; bash shows only the
+candidates. `cmd.exe` has no programmable completion, so it isn't
+supported. Options and values can have completers that find values
+when the program runs, such as branch names; the
+[design](docs/design.md#completions) has the details.
+
 A program usually matches on the result: `Args` to run, `Output` to
 print and exit with status 0, and `ArgError` to print to standard error
 and exit with status 2. Parsing touches nothing outside: the program
@@ -132,10 +170,17 @@ Or on every backend:
 Source files in `src/` are literate Markdown: `command.temper.md`
 declares commands and their arguments, `parse.temper.md` parses,
 `help.temper.md` writes help, `style.temper.md` has the argument
-styles, and `values.temper.md` has the value types, with tests beside
-them in `-tests` files and subcommands' tests in
+styles, `values.temper.md` has the value types, `complete.temper.md`
+answers completions, and `shells.temper.md` has the shells' scripts,
+with tests beside them in `-tests` files and subcommands' tests in
 `subcommand-tests.temper.md`. `tour-tests.temper.md` checks the
 examples above.
+
+`tests/shells/run.py` installs each shell's script in a throwaway
+directory and completes command lines in the real shells, skipping
+those not installed:
+
+    uv run tests/shells/run.py [SHELL ...]
 
 ## License
 

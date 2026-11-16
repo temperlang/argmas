@@ -39,6 +39,8 @@ Options:
 - A subcommand's usage line starts with its path (`frob add`), and its
   options include those its parents declared `inherited`, after its
   own. Hidden aliases aren't listed.
+- With `completions` set, `--completions <SHELL>` is listed last,
+  with the shells it knows.
 - Option names are written in the command's first
   [style](style.temper.md): `--level <LEVEL>`, `-level <LEVEL>`, or
   `/level:<LEVEL>`, and help is `-h, --help`, `-h, -help`, or
@@ -96,6 +98,11 @@ The help puts these together.
       }
       if (command.builtInVersion) {
         options.add(new HelpItem("      ${style.prefix}version", "Show the version and exit.", []));
+      }
+      if (command.builtInCompletions) {
+        let shellForm = if (style == Style.windows) { ":<SHELL>" } else { " <SHELL>" };
+        let names = shellNames.join(", ") { (n: String): String => n };
+        options.add(new HelpItem("      ${style.prefix}completions${shellForm}", "Print a completion script for SHELL and exit.", ["[choices: ${names}]"]));
       }
 
       var longest = 0;

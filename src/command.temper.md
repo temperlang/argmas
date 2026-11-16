@@ -55,6 +55,13 @@ A second style also accepted, for a tool moving from one style to the
 other; help shows the first.
 
       public alsoStyle: Style? = null,
+
+Whether `--completions SHELL` is built in, printing a script that sets
+up [completions](complete.temper.md) in that shell. Off by default,
+since it's another option in help; a program can instead print
+`cli.completionScript(shell)` from a subcommand of its own.
+
+      public completions: Boolean = false,
     ) {}
 
 Settings for a subcommand, declared with `cli.command`: its name, what
@@ -127,6 +134,12 @@ or after their names: `frob -v add` and `frob add -v` are the same.
 Help lists it under each.
 
       public inherited: Boolean = false,
+
+What shells offer when completing its value, found when the program
+runs, such as the names of branches; without one, its value type
+decides.
+
+      public completer: Completer? = null,
     ) {}
 
 Settings for positional arguments: a name for usage and help (`FILE`),
@@ -140,6 +153,7 @@ and for `positionals`, how many are allowed.
 The most allowed, or null for no limit.
 
       public max: Int? = null,
+      public completer: Completer? = null,
     ) {}
 
 ## What a command knows about each argument
@@ -192,6 +206,7 @@ Where the parsed result keeps its values.
 
       public index: Int,
       private checker: Checker,
+      private completer: Completer?,
 
 The command that declared it.
 
@@ -201,6 +216,15 @@ The command that declared it.
 Whether `text` is a valid value.
 
       public accepts(text: String): Boolean { checker.accepts(text) }
+
+How a shell completes a value starting with `partial`: from the
+spec's completer, if any, or else as its value type says.
+
+      public complete(partial: String): Completion {
+        let c = completer;
+        if (c != null) { return new Completion(c.complete(partial), Directive.none, ""); }
+        checker.complete(partial)
+      }
     }
 
 The kinds of argument, as named singletons.
@@ -221,16 +245,19 @@ value's type, with a `Checker`.
 
     export interface Checker {
       public accepts(text: String): Boolean;
+      public complete(partial: String): Completion;
     }
 
     class TypeChecker<T>(private type: ValueType<T>) extends Checker {
       public accepts(text: String): Boolean {
         do { type.parse(text); true } orelse false
       }
+      public complete(partial: String): Completion { type.complete(partial) }
     }
 
     class NoValueChecker extends Checker {
       public accepts(text: String): Boolean { false }
+      public complete(partial: String): Completion { new Completion([], Directive.none, "") }
     }
 
 ## Handles
@@ -377,13 +404,13 @@ A flag: true when given, false when not (or as its environment
 variable says).
 
       public flag(spec: FlagSpec): Flag {
-        new Flag(addParam(ParamKind.flag, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, false, 0, 0, null, [], booleanExpected, new NoValueChecker()))
+        new Flag(addParam(ParamKind.flag, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, false, 0, 0, null, [], booleanExpected, new NoValueChecker(), null))
       }
 
 A counted flag: the number of times it's given, so `-vvv` is 3.
 
       public count(spec: FlagSpec): Counter {
-        new Counter(addParam(ParamKind.count, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, true, 0, 0, null, [], "a count", new NoValueChecker()))
+        new Counter(addParam(ParamKind.count, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, true, 0, 0, null, [], "a count", new NoValueChecker(), null))
       }
 
 An option that may be left out; its value is null then. Given more
@@ -417,7 +444,7 @@ Its environment variable gives one value.
 One positional argument, which must be there.
 
       public positional<T>(type: ValueType<T>, spec: PositionalSpec): Value<T> {
-        new Value<T>(positionalParam(type, spec.name, spec.help, 1, 1), type, null)
+        new Value<T>(positionalParam(type, spec.name, spec.help, 1, 1, spec.completer), type, null)
       }
 
 Positional arguments, from `spec.min` to `spec.max`. With several
@@ -425,29 +452,29 @@ lists, each gets its minimum, and the rest go to the earliest that
 takes more, so `SRC... DEST` works.
 
       public positionals<T>(type: ValueType<T>, spec: PositionalSpec): Values<T> {
-        new Values<T>(positionalParam(type, spec.name, spec.help, spec.min, spec.max), type)
+        new Values<T>(positionalParam(type, spec.name, spec.help, spec.min, spec.max, spec.completer), type)
       }
 
       private optionParam<T>(type: ValueType<T>, spec: OptionSpec, required: Boolean, repeated: Boolean, defaultText: String?): Param {
         let valueName = spec.valueName ?? asciiUpper(spec.name);
-        addParam(ParamKind.option, spec.name, spec.short, spec.help, spec.env, valueName, false, spec.inherited, required, repeated, 0, 0, defaultText, type.choices, type.expected, new TypeChecker<T>(type))
+        addParam(ParamKind.option, spec.name, spec.short, spec.help, spec.env, valueName, false, spec.inherited, required, repeated, 0, 0, defaultText, type.choices, type.expected, new TypeChecker<T>(type), spec.completer)
       }
 
-      private positionalParam<T>(type: ValueType<T>, name: String, help: String, min: Int, max: Int?): Param {
+      private positionalParam<T>(type: ValueType<T>, name: String, help: String, min: Int, max: Int?, completer: Completer?): Param {
         if (min < 0 || (max != null && max < min) || max == 0) {
           specProblems.add("positional ${name} allows no count of arguments");
         }
-        addParam(ParamKind.positional, name, null, help, null, name, false, false, min > 0, true, min, max, null, type.choices, type.expected, new TypeChecker<T>(type))
+        addParam(ParamKind.positional, name, null, help, null, name, false, false, min > 0, true, min, max, null, type.choices, type.expected, new TypeChecker<T>(type), completer)
       }
 
       private addParam(
         kind: ParamKind, name: String, short: String?, help: String, env: String?,
         valueName: String, negatable: Boolean, inherited: Boolean, required: Boolean,
         repeated: Boolean, min: Int, max: Int?, defaultText: String?,
-        choiceList: List<String>, expected: String, checker: Checker,
+        choiceList: List<String>, expected: String, checker: Checker, completer: Completer?,
       ): Param {
         checkNames(kind, name, short);
-        let p = new Param(kind, name, short, help, env, valueName, negatable, inherited, required, repeated, min, max, defaultText, choiceList, expected, params.length, checker, this);
+        let p = new Param(kind, name, short, help, env, valueName, negatable, inherited, required, repeated, min, max, defaultText, choiceList, expected, params.length, checker, completer, this);
         params.add(p);
         p
       }
@@ -496,6 +523,33 @@ parsing its top command with the subcommand's path first:
 
       public help(width: Int = 80): String { helpText(this, width) }
 
+What a shell offers for the word at `index` in `words`, the arguments
+typed so far (without the program's name), as
+[completions](complete.temper.md) describes; by default, for the last
+word. As with `parse`, a subcommand's are its top command's with its
+path first.
+
+      public complete(words: List<String>, index: Int? = null): Completion {
+        let at = index ?? (words.length - 1).max(0);
+        let parent = up;
+        if (parent != null) {
+          let withName = new ListBuilder<String>();
+          withName.add(spec.name);
+          for (let word of words) { withName.add(word); }
+          return parent.complete(withName.toList(), at + 1);
+        }
+        completeWords(this, words, at)
+      }
+
+The script that sets up completions for this command in `shell`, as
+[shells](shells.temper.md) describes. It asks the program itself for
+completions as the user types, so it needn't change when the program
+does.
+
+      public completionScript(shell: Shell): String { top.scriptFor(shell) }
+
+      private scriptFor(shell: Shell): String { shellScript(shell, spec.name) }
+
       public usage(width: Int = 80): String { usageText(this, width) }
 
 Whether `--help`, `-h`, and `--version` are built in (in `windows`
@@ -509,6 +563,11 @@ which a subcommand has only when its spec gives one).
         accepts(Style.windows) && find("?", Style.windows, true) == null
       }
       public get builtInVersion(): Boolean { spec.version != null && !answers("version", false) }
+
+Whether `--completions` is built in: for the top command, when its spec
+asks for it and the program doesn't take the name.
+
+      public get builtInCompletions(): Boolean { up == null && spec.completions && !answers("completions", false) }
 
       private answers(name: String, asShort: Boolean): Boolean {
         for (let style of styles) {
@@ -593,7 +652,7 @@ subcommand and returns its own `Command`, with its own arguments, help,
 errors, and, if it likes, subcommands of its own.
 
       public command(spec: SubcommandSpec): Command {
-        let sub = new Command(new CommandSpec(spec.name, spec.about, spec.version, spec.commandOptional, Style.gnu, null));
+        let sub = new Command(new CommandSpec(spec.name, spec.about, spec.version, spec.commandOptional, Style.gnu, null, false));
         sub.up = this;
         sub.otherNames = spec.aliases;
         sub.hiddenNames = spec.hiddenAliases;
@@ -604,6 +663,8 @@ errors, and, if it likes, subcommands of its own.
         for (let name of names.toList()) {
           if (!validName(name)) {
             specProblems.add("invalid command name '${name}'");
+          } else if (name == completeWord && up == null) {
+            specProblems.add("command name '${name}' is reserved for completions");
           } else if (findCommand(name) != null) {
             specProblems.add("command ${name} declared twice");
           }
@@ -706,7 +767,87 @@ has the name of one its parents declared `inherited`.
           }
         }
         collectStyleProblems(out, location);
+        collectBundleProblems(out, location);
         for (let sub of subs.toList()) { sub.collectProblems(out); }
+      }
+
+With `gnu` and another style, a long name could also be a `gnu`
+bundle of short options: with `vq`, `v`, and `q`, `-vq` would be
+`-vq` in `singleDash` or `windows` but `-v -q` in `gnu`, as would
+`vo` with a flag `v` and an option `o` (`-v -o` and a value next).
+A short option followed by more letters, as `-l evel` for `-level`,
+isn't reported: a long name read in full always wins over a value
+attached to a short option, as styles decide. Parsing
+reads it as the long name, so the bundle can't be given that way, and
+users can't know which they get; this reports it, so a spec with it
+can't ship. Each is reported where it first appears: a long name
+inherited from above meets this command's short names here.
+
+      private collectBundleProblems(out: ListBuilder<String>, location: String): Void {
+        var hasGnu = false;
+        var hasOther = false;
+        for (let style of styles) {
+          if (style == Style.gnu) { hasGnu = true; } else { hasOther = true; }
+        }
+        if (!hasGnu || !hasOther) { return; }
+        let all = options;
+        let names = new ListBuilder<String>();
+        let owned = new ListBuilder<Boolean>();
+        for (let p of all) {
+          // Own, not inherited: those come from commands further up.
+          let own = p.command.depth == depth;
+          names.add(p.name);
+          owned.add(own);
+          if (p.negatable) {
+            names.add("no-${p.name}");
+            owned.add(own);
+          }
+        }
+        let isTop = up == null;
+        if (builtInHelpLong) { names.add("help"); owned.add(isTop); }
+        if (builtInVersion) { names.add("version"); owned.add(isTop); }
+        if (builtInCompletions) { names.add("completions"); owned.add(true); }
+        let nameList = names.toList();
+        for (var k = 0; k < nameList.length; k += 1) {
+          let name = nameList[k];
+          if (!name.hasAtLeast(String.begin, name.end, 2)) { continue; }
+          let reading = bundleReading(name, all);
+          if (reading == null) { continue; }
+          if (owned[k] || reading.ownedBy(this)) {
+            out.add("long name ${name} could also be read as ${reading.text}${location}");
+          }
+        }
+      }
+
+How `-name` reads as a `gnu` bundle of this command's short options,
+or null when it doesn't: each a flag until one takes a value, which
+takes the rest of the name, or the next argument.
+
+      private bundleReading(name: String, all: List<Param>): BundleReading? {
+        let parts = new ListBuilder<String>();
+        let used = new ListBuilder<Param>();
+        var i = String.begin;
+        while (name.hasIndex(i)) {
+          let after = name.next(i);
+          let c = name.slice(i, after);
+          let p = findIn(all, c, Style.gnu, true);
+          if (p != null) {
+            used.add(p);
+            parts.add("-${c}");
+            if (p.kind == ParamKind.option) {
+              // An attached value, as in `-l evel` for `-level`, is
+              // decided: the long name wins, as styles say.
+              if (name.hasIndex(after)) { return null; }
+              return new BundleReading(parts.join(" ") { (s: String): String => s }, used.toList());
+            }
+          } else if (c == "h" && builtInHelpShort) {
+            parts.add("-h");
+          } else {
+            return null;
+          }
+          i = after;
+        }
+        new BundleReading(parts.join(" ") { (s: String): String => s }, used.toList())
       }
 
 In `singleDash` and `windows`, long and short names share one
@@ -729,6 +870,17 @@ are reported above.)
             }
           }
         }
+      }
+    }
+
+How a long name reads as a bundle, and the options it uses.
+
+    class BundleReading(public text: String, public used: List<Param>) {
+      public ownedBy(command: Command): Boolean {
+        for (let p of used) {
+          if (p.command == command) { return true; }
+        }
+        false
       }
     }
 

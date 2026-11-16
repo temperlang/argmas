@@ -55,9 +55,9 @@ when (cli.parse(argv, env)) {
   arguments; backends without named arguments get builders, as elsewhere
   in Temper's output.
 - Value types are small parser objects (`ints`, `floats`, `strings`,
-  and `choices([...])` so far; `path` and `duration` later; and
-  user-defined ones through the `ValueType` interface), each with its
-  own error messages and, later, completion hints.
+  `paths`, `directories`, and `choices([...])` so far; `duration`
+  later; and user-defined ones through the `ValueType` interface),
+  each with its own error messages and completions.
 - The environment comes in through an `Environment` interface the
   program implements (or `MapEnvironment` over a map), so parsing
   touches nothing outside.
@@ -132,8 +132,10 @@ when (args.command) {
 - **Errors:** one clear line with the usage hint, and suggestions for near
   misses ("unknown option --verbos; did you mean --verbose?"), exit status
   2 as is conventional.
-- **Completions:** generated scripts for bash, zsh, fish, and PowerShell,
-  from the same spec, including value hints (files, choices).
+- **Completions:** answered by the program itself from the same spec,
+  through short scripts for bash, zsh, fish, and PowerShell, including
+  values (choices, files, directories, and values found at run time);
+  see [Completions](#completions).
 - **Text:** arguments are Unicode strings; how each platform's raw
   arguments (bytes on POSIX, UTF-16 on Windows) reach them is handled per
   backend, with invalid sequences reported, not silently replaced.
@@ -189,9 +191,12 @@ Each corner case gets one decision, written down here, and a test
 - **Positional lists:** each gets its minimum, and the rest go to the
   earliest that takes more, so `SRC... DEST` works.
 - **Spec mistakes** (a name declared twice, a short name that isn't one
-  character, a name starting with `-` or holding `=` or a space, or a
-  positional count range that allows nothing) are reported by `parse`
-  as an `invalidSpec` error, not a panic where they're declared.
+  character, a name starting with `-` or holding `=` or a space, a
+  positional count range that allows nothing, or, with two styles, a
+  long name that also reads as a bundle of short options, as
+  [styles](#argument-styles) describes) are reported by `parse` as an
+  `invalidSpec` error, not a panic where they're declared, so a spec
+  with one can't ship unnoticed: its first run fails.
 - **Values** (`src/values-tests.temper.md`): `ints` takes an optional
   sign and ASCII digits, leading zeros allowed, within 32 bits; `floats`
   takes an optional sign, digits with an optional point and fraction
@@ -275,7 +280,9 @@ Subcommands (`src/subcommand-tests.temper.md`):
   in, after the top command's name: `frob: ...`, then
   `Usage: frob add ...` and `Try 'frob add --help' ...`.
 - **Spec mistakes:** subcommand names and aliases follow the rules for
-  long names, and no two under one command share one; a subcommand's
+  long names, and no two under one command share one; the top
+  command's can't be `__complete`, which asks for
+  [completions](#completions); a subcommand's
   option can't have the long or short name of an option inherited from
   above. They're reported for the whole tree, ending with where they
   are (`in frob add`). The same name at two levels is fine when it
@@ -361,7 +368,127 @@ Decisions, each tested in `src/style-tests.temper.md`:
   is echoed as typed, with a suggestion using the prefix typed.
 - **Subcommands** take their top command's styles; `SubcommandSpec`
   has no `style`.
+- **Long names that read as bundles** (decided 2026-11-16): with
+  `gnu` and another style, a long name that is also a `gnu` bundle of
+  known short options, such as `vq` beside `-v` and `-q`, or `vo`
+  beside a flag `-v` and an option `-o` (its value next), is a spec
+  mistake: `long name vq could also be read as -v -q`. Parsing would
+  read `-vq` as the long name, so the bundle could never be given and
+  users couldn't tell which they'd get. Built-in names count (`-help`
+  with flags `-e`, `-l`, and `-p`), as do `no-` forms and inherited
+  options, reported in the subcommand where the two meet. A short
+  option with letters after it that aren't all short flags, as
+  `-level` with `-l`, isn't reported: that's `-level`, as decided
+  above.
 - **Not planned:** `+x` to turn an option on, now rare.
+
+## Completions
+
+As built in the fourth slice (decided with the user 2026-11-16):
+completion is dynamic. A short script per shell asks the program
+itself as the user presses Tab, and Argmas answers from the spec it
+parses with, so completions can't drift from what the program
+accepts, follow every style, and include values only known at run
+time. Static scripts generated per program (as clap and argcomplete
+can) would need regenerating with each release and couldn't run a
+completer.
+
+```temper
+let cli = new Command({ name: "frob", completions: true });
+let mode = cli.option(choices(["fast", "slow"]), { name: "mode" });
+let out = cli.option(paths, { name: "out", short: "o" });
+let branch = cli.option(strings, { name: "branch", completer: new Branches() });
+
+cli.complete(["--mode", "f"]);   // fast
+cli.complete(["--out=sr"]);      // files after --out=, by the shell
+// `frob --completions bash` prints the bash script, as does
+// cli.completionScript(Shell.bash); `frob __complete 1 --mode f`
+// prints what the script reads: "fast\n:none\n".
+```
+
+Decisions, each tested in `src/complete-tests.temper.md` and
+`src/shells-tests.temper.md`:
+
+- **The protocol:** `frob __complete INDEX WORD...`, with the words
+  after the program's name and the index (from 0) of the word being
+  completed, empty when past the last; words after it are ignored. The
+  index, rather than an empty last word, keeps PowerShell before 7.3,
+  which drops empty arguments, working. The answer is a line per
+  candidate, `value` or `value<TAB>description`, then `:none`,
+  `:files`, or `:directories`, with a space and a prefix to keep
+  (`:files --out=`) for a path attached to an option. Descriptions
+  are the help text on one line.
+- **Routing:** `cli.parse(argv)` with `__complete` as the first
+  argument returns an `Output` (kind `OutputKind.completions`) whose
+  text is the answer, so a program's usual handling of `Output`
+  (print, exit 0) serves completions with no more code. It's not in
+  help. `__complete` anywhere else is an ordinary word; a top
+  command's subcommand can't have the name (a spec mistake), and a
+  positional argument with that text goes after `--`. A spec with
+  mistakes answers nothing.
+- **The pure function:** `cli.complete(words, index)` returns a
+  `Completion` (candidates with descriptions, a `Directive`, and the
+  prefix); the index defaults to the last word. A subcommand's is
+  its top command's with its path first, as for `parse`.
+- **What's offered:** the words before the one completed are read as
+  parsing reads them, so completion knows the command reached, the
+  options given, and whether a value is due. Subcommand names (with
+  about text, and `help` when built in); a visible alias only when the
+  word starts it and not its name (`rem` gives `remove`), hidden
+  aliases never; after `help`, the named command's subcommands. The
+  next positional argument's values. Options only once the word starts
+  with `-` (or `/` in `windows`), unless nothing else can go there.
+- **Options in styles:** each option in each of the command's styles:
+  in `gnu`, `-v` and `--verbose`; in `singleDash` and `windows`, the
+  prefix typed is kept (`-name`, `--name`, or `/name`, `/` when
+  nothing is typed); `no-` forms of negatable flags; inherited options;
+  and the built-ins (`--help`, `-h`, `/?`, `--version`,
+  `--completions`). `windows` names match ignoring case. A `/word` in
+  `windows` gets the positional argument's values (paths) too, since
+  it may be one.
+- **Repeats:** an option already given isn't offered again unless it's
+  counted or `repeated`; a negatable flag given either way isn't
+  offered either way.
+- **Values:** after an option, or attached (`--mode=f`, `-mode=f`,
+  `/mode:f`), from the option's `completer` setting if any, else its
+  value type's `complete`: choices for `choices`, nothing for numbers,
+  files for `strings` (shells complete files for arguments they know
+  nothing about, and text arguments are so often paths) and `paths`,
+  and directories for `directories`. Files and directories are left to
+  the shell, which knows its quoting, `~`, and hidden files. A word
+  that looks like an option isn't a value, as in parsing. After `--`,
+  only positional arguments. Argmas offers only candidates that start
+  with the word, so every shell sees the same list.
+- **Custom completers:** the `Completer` interface, given the partial
+  word, returns `Candidate`s (a value and an optional description),
+  for an option's or positional argument's `completer`; a `ValueType`
+  can override `complete` to do the same for every option of its type,
+  or to ask for files or directories.
+- **Scripts:** bash (4.4 or later), zsh, fish, and PowerShell (5.1 or
+  later, with `Register-ArgumentCompleter -Native`), each a few dozen
+  lines, the same for every program but its name, so they needn't be
+  regenerated when the program changes. zsh, fish, and PowerShell show
+  descriptions; bash can't. bash reads words from `COMP_LINE`, since
+  `COMP_WORDS` splits at `=` and `:`, and hands bash back only the
+  part after the last of those it completes. PowerShell completes
+  paths itself when a completer offers nothing, so values with no
+  candidates get paths there.
+- **Printing scripts:** `cli.completionScript(shell)` with `Shell.bash`,
+  `zsh`, `fish`, or `powershell`, and an opt-in built-in
+  `--completions SHELL` (`completions: true` in `CommandSpec`), an
+  option rather than a subcommand so it works for commands with
+  positional arguments and no subcommands; a program wanting
+  `frob completions bash` declares that subcommand and prints
+  `completionScript`. Like `--version`, it's only on the top command,
+  its output wins over errors other than asking for help, and a
+  program may take the name. Help lists it last with the shells.
+- **Print only:** Argmas never edits a user's shell setup. Each script
+  starts with a comment saying where its shell looks for it, and the
+  README lists them: the bash-completion directory
+  (`~/.local/share/bash-completion/completions/frob`) or `~/.bashrc`,
+  a directory on zsh's `$fpath` as `_frob`,
+  `~/.config/fish/completions/frob.fish`, and the PowerShell profile.
+- **Not supported:** `cmd.exe`, which has no programmable completion.
 
 ## Testing
 
@@ -371,8 +498,11 @@ Decisions, each tested in `src/style-tests.temper.md`:
   clap, and argparse where they claim the same conventions, with every
   difference either matched or documented.
 - **Help and errors:** goldens of the exact text.
-- **Completions:** the generated scripts run in real bash, zsh, fish, and
-  PowerShell in CI, completing sample command lines.
+- **Completions:** tables of words in and candidates out, goldens of
+  each script, and `tests/shells/run.py`, which installs each script
+  in a throwaway directory and completes command lines in the real
+  bash, zsh, fish, and PowerShell, skipping those not installed (so
+  far bash has run; the others need CI or a machine that has them).
 - **Tours:** a small example program in each language, checked in CI, as
   the other Temper libraries have.
 
@@ -439,8 +569,11 @@ the API, and the choice made for each:
 
 ## Open questions
 
-- Completions in each style: `windows` completions for PowerShell
-  and `cmd`, and whether completing a `/` word should offer paths too.
+- Completions: quotes typed on a bash line reach the program as typed;
+  whether to unquote them. PowerShell falls back to paths when nothing
+  is offered; whether to stop it (Cobra adds a dummy candidate). The
+  zsh, fish, and PowerShell scripts haven't been driven in their
+  shells here yet.
 - A declared default subcommand, decided against for now; revisit if
   `commandOptional` proves awkward.
 - A flag that defaults to true, for `--no-color` style flags: today a

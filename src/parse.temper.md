@@ -4,8 +4,9 @@
 and returns one of three results:
 
 - `Args`, the values, read with `args.get(handle)`;
-- `Output`, text to print before exiting with status 0, for `--help`
-  and `--version`;
+- `Output`, text to print before exiting with status 0, for `--help`,
+  `--version`, `--completions`, and a shell asking for
+  [completions](complete.temper.md);
 - `ArgError`, a mistake in the arguments, with a one-line message and
   a report to print before exiting with status 2.
 
@@ -105,7 +106,7 @@ Outside `Args`, since in C# its method `Source` would hide the class.
 
     let absentFound(): Found { new Found([], Source.absent) }
 
-### Help and version
+### Help, version, and completions
 
     export class Output(
 
@@ -113,11 +114,17 @@ The command whose help or version it is.
 
       public command: Command,
 
-Whether it's the help (true) or the version (false).
+What it is: help, a version, completions, or a completion script.
 
-      public isHelp: Boolean,
+      public kind: OutputKind,
+
+The text of completions or a script.
+
+      private content: String = "",
     ) extends ParseResult {
       public get exitStatus(): Int { 0 }
+
+      public get isHelp(): Boolean { kind == OutputKind.help }
 
 The text to print to standard output, wrapped to `width` columns.
 
@@ -125,12 +132,34 @@ A version is the command's path and its version: `frob 1.2.0`, or
 `frob add 2.0.0` for a subcommand with its own.
 
       public text(width: Int = 80): String {
-        if (isHelp) {
+        if (kind == OutputKind.help) {
           command.help(width)
-        } else {
+        } else if (kind == OutputKind.version) {
           "${command.path} ${command.spec.version ?? ""}\n"
+        } else {
+          content
         }
       }
+    }
+
+The kinds of output, as named singletons.
+
+    @auto("==")
+    export class OutputKind {
+      public name: String;
+      private constructor(name: String) { this.name = name; }
+      public static help: OutputKind = doPure { new OutputKind("help") }
+      public static version: OutputKind = doPure { new OutputKind("version") }
+
+What a shell asked for with `__complete`, in the form its script
+reads.
+
+      public static completions: OutputKind = doPure { new OutputKind("completions") }
+
+A script for `--completions SHELL`.
+
+      public static completionScript: OutputKind = doPure { new OutputKind("completionScript") }
+      public toString(): String { name }
     }
 
 ### Errors
@@ -264,9 +293,14 @@ subcommand's name, as in git and clap.
   add` shows `frob`'s, `frob add --help` shows `add`'s, and the last
   one given wins.
 
-Parsing checks the spec first, then reads the arguments.
+Parsing checks the spec first, then reads the arguments. A shell's
+script asking for completions, with `__complete` first, gets them
+instead.
 
     let parseCommand(command: Command, argv: List<String>, env: Environment?): ParseResult {
+      if (!argv.isEmpty && argv[0] == completeWord) {
+        return new Output(command, OutputKind.completions, completionRequest(command, argv).text());
+      }
       let problems = command.problems;
       if (!problems.isEmpty) {
         return new ArgError(command, ErrorKind.invalidSpec, "invalid command spec: ${problems[0]}");
@@ -293,8 +327,25 @@ arguments given to it.
 
 One level for the top command, and one more for each subcommand named.
 
-      private levels: ListBuilder<Level> = firstLevel(top);
+      public levels: ListBuilder<Level> = firstLevel(top);
       private var firstError: ArgError? = null;
+
+Whether `--` came, so the rest are positional arguments.
+
+      public var onlyPositionals: Boolean = false;
+
+For completions, what the last argument read left waiting: the option
+whose value comes next, `--completions` without its shell, or the
+command whose subcommands come next after `help`.
+
+      public var pending: Param? = null;
+      public var pendingShell: Boolean = false;
+      public var helpTarget: Command? = null;
+
+Whether a word after `help` named no subcommand, so nothing can
+follow.
+
+      public var lost: Boolean = false;
 
 The command whose help was asked for, if any.
 
@@ -304,11 +355,27 @@ The command whose version was asked for, if any.
 
       private var versionFor: Command? = null;
 
-      private get current(): Level { levels[levels.length - 1] }
+The shell whose completion script was asked for, if any.
+
+      private var scriptShell: Shell? = null;
+
+      public get current(): Level { levels[levels.length - 1] }
 
       public run(): ParseResult {
+        scan();
+        let help = helpFor;
+        if (help != null) { return new Output(help, OutputKind.help); }
+        let version = versionFor;
+        if (version != null) { return new Output(version, OutputKind.version); }
+        let shell = scriptShell;
+        if (shell != null) { return new Output(top, OutputKind.completionScript, top.completionScript(shell)); }
+        finish()
+      }
+
+Reads every argument, noting what it finds.
+
+      public scan(): Void {
         var i = 0;
-        var onlyPositionals = false;
         let n = argv.length;
         while (i < n) {
           let arg = argv[i];
@@ -330,10 +397,12 @@ The command whose version was asked for, if any.
             }
           }
         }
-        let help = helpFor;
-        if (help != null) { return new Output(help, true); }
-        let version = versionFor;
-        if (version != null) { return new Output(version, false); }
+      }
+
+What comes after reading the arguments: errors found, then the
+positional arguments, the environment, and required options.
+
+      private finish(): ParseResult {
         let early = firstError;
         if (early != null) { return early; }
         let last = current.command;
@@ -397,11 +466,13 @@ other styles), and `help` itself are skipped, so `frob help --help` is `frob`'s 
           let sub = target.findCommand(name);
           if (sub == null) {
             fail(target, ErrorKind.unknownCommand, "unknown command '${name}'${suggestCommand(target, name)}");
+            lost = true;
             return argv.length;
           }
           target = sub;
         }
         helpFor = target;
+        helpTarget = target;
         argv.length
       }
 
@@ -454,6 +525,9 @@ a value it took.
           if (inline != null) { fail(command, ErrorKind.unexpectedValue, "option --version takes no value"); }
           versionFor = command;
           return next;
+        }
+        if (name == "completions" && command.builtInCompletions) {
+          return shellOption(command, inline, next);
         }
         let hint = belongsHint(command, name, Style.gnu, false, "--${name}");
         fail(command, ErrorKind.unknownOption, "unknown option --${name}${hint ?? suggestLong(command, name)}");
@@ -547,6 +621,9 @@ value after `=` or (in `windows`) `:`.
           versionFor = command;
           return next;
         }
+        if (sameName(name, "completions", ic) && command.builtInCompletions) {
+          return shellOption(command, inline, next);
+        }
         let hint = belongsHint(command, name, style, false, typed);
         var suggestion = "";
         let best = nearest(name, longNames(command));
@@ -569,6 +646,37 @@ value after `=` or (in `windows`) `:`.
           return next;
         }
         takeNext(p, next)
+      }
+
+### Completion scripts
+
+`--completions SHELL`, when built in, takes the shell's name as an
+option takes its value, and like `--version` its output wins over
+errors other than asking for help.
+
+      private shellOption(command: Command, inline: String?, next: Int): Int {
+        let shown = "${command.style.prefix}completions";
+        var name = "";
+        var after = next;
+        if (inline != null) {
+          name = inline;
+        } else if (next < argv.length && argv[next] != "--" && readAs(current, argv[next], true) == null) {
+          name = argv[next];
+          after = next + 1;
+        } else {
+          if (next >= argv.length) { pendingShell = true; }
+          fail(command, ErrorKind.missingValue, "option ${shown} needs a value");
+          return next;
+        }
+        let shell = Shell.named(name);
+        if (shell == null) {
+          let near = nearest(name, shellNames);
+          let suggestion = if (near != null) { "; did you mean ${near}?" } else { "" };
+          fail(command, ErrorKind.invalidValue, "invalid value '${name}' for ${shown}: expected one of ${shellNames.join(", ") { (n: String): String => n }}${suggestion}");
+        } else if (scriptShell == null) {
+          scriptShell = shell;
+        }
+        after
       }
 
 ### Options given after a subcommand's name
@@ -608,6 +716,7 @@ first style.
           fail(command, ErrorKind.missingValue, "option ${shown} needs a value; to give one starting with '${lead}', write ${attached}");
           return next;
         }
+        pending = p;
         fail(command, ErrorKind.missingValue, "option ${shown} needs a value");
         next
       }
@@ -623,7 +732,7 @@ else the first in which it's shaped like an option at all, to report
 it there. A value after an option (`forValue`) isn't read as an
 unknown `/word`, so `/out /tmp/x` gives `/tmp/x` to `/out`.
 
-      private readAs(level: Level, arg: String, forValue: Boolean): Style? {
+      public readAs(level: Level, arg: String, forValue: Boolean): Style? {
         let command = level.command;
         let styles = command.styles;
         for (let style of styles) {
@@ -679,6 +788,7 @@ isn't negatable counts, for its error.
         if (startsWith(asciiLowerIf(name, ic), "no-") && command.find(dropFirst(name, 3), style, false) != null) { return true; }
         if (sameName(name, "help", ic) && command.builtInHelpLong) { return true; }
         if (sameName(name, "version", ic) && command.builtInVersion) { return true; }
+        if (sameName(name, "completions", ic) && command.builtInCompletions) { return true; }
         if (style.oneNamespace && sameName(name, "h", ic) && command.builtInHelpShort) { return true; }
         name == "?" && style == Style.windows && command.builtInHelpQuestion
       }
@@ -876,6 +986,7 @@ so instead.
         }
         if (command.builtInHelpLong) { names.add("help"); }
         if (command.builtInVersion) { names.add("version"); }
+        if (command.builtInCompletions) { names.add("completions"); }
         names.toList()
       }
     }
