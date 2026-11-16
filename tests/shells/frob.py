@@ -41,12 +41,12 @@ def command(style):
     cli.option(paths, OptionSpec(name="out", short="o", help_="Where to write."))
     cli.option(directories, OptionSpec(name="dir", help_="Where to work."))
     cli.option(strings, OptionSpec(name="branch", help_="Which branch.", completer=Branches()))
-    add = cli.command(SubcommandSpec(name="add", about="Add files.", aliases=["stage"]))
+    add = cli.subcommand(SubcommandSpec(name="add", about="Add files.", aliases=["stage"]))
     add.flag(FlagSpec(name="force", short="f", help_="Add ignored files too."))
     add.positionals(paths, PositionalSpec(name="PATH"))
-    remote = cli.command(SubcommandSpec(name="remote", about="Manage remotes."))
-    remote.command(SubcommandSpec(name="add", about="Add a remote."))
-    remote.command(SubcommandSpec(name="list", about="List remotes."))
+    remote = cli.subcommand(SubcommandSpec(name="remote", about="Manage remotes."))
+    remote.subcommand(SubcommandSpec(name="add", about="Add a remote."))
+    remote.subcommand(SubcommandSpec(name="list", about="List remotes."))
     return cli
 
 

@@ -15,14 +15,13 @@ using static Argmas.ArgmasGlobal;
 var cli = new Command(new CommandSpec("pack", about: "Pack files into archives.", version: "1.0.0"));
 var verbose = cli.Flag(new FlagSpec("verbose", @short: "v", help: "Say what's happening.", inherited: true));
 
-// A method can't share its class's name in C#, so `command` is Command_.
-var add = cli.Command_(new SubcommandSpec("add", about: "Add files to an archive."));
+var add = cli.Subcommand(new SubcommandSpec("add", about: "Add files to an archive."));
 var level = add.OptionOr(Ints, 6, new OptionSpec("level", @short: "l", help: "How hard to compress.", env: "PACK_LEVEL"));
 var mode = add.Option(Choices(new[] { "fast", "small" }), new OptionSpec("mode", help: "What to favor."));
 var archive = add.Positional(Strings, new PositionalSpec("ARCHIVE", help: "The archive to add to."));
 var files = add.Positionals(Strings, new PositionalSpec("FILE", min: 1, help: "Files to add."));
 
-var list = cli.Command_(new SubcommandSpec("list", about: "List an archive's files.", aliases: new[] { "ls" }));
+var list = cli.Subcommand(new SubcommandSpec("list", about: "List an archive's files.", aliases: new[] { "ls" }));
 var listed = list.Positional(Strings, new PositionalSpec("ARCHIVE", help: "The archive to list."));
 
 // Values to run with, text to print (help and version), or a mistake.

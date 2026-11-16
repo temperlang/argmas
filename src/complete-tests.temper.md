@@ -51,15 +51,15 @@ positional arguments of each kind.
       let git = new Command({ name: "minigit", about: "Track files." });
       git.count({ name: "verbose", short: "v", inherited: true, help: "Say more." });
       git.option(directories, { name: "dir", help: "Where the repository is." });
-      let add = git.command({ name: "add", about: "Add files.", aliases: ["stage"] });
+      let add = git.subcommand({ name: "add", about: "Add files.", aliases: ["stage"] });
       add.flag({ name: "force", short: "f", help: "Add ignored files too." });
       add.positionals(paths, { name: "PATH", min: 1 });
-      git.command({ name: "rm", about: "Remove files.", aliases: ["remove"], hiddenAliases: ["del"] });
-      let remote = git.command({ name: "remote", about: "Manage remotes." });
-      let remoteAdd = remote.command({ name: "add", about: "Add a remote." });
+      git.subcommand({ name: "rm", about: "Remove files.", aliases: ["remove"], hiddenAliases: ["del"] });
+      let remote = git.subcommand({ name: "remote", about: "Manage remotes." });
+      let remoteAdd = remote.subcommand({ name: "add", about: "Add a remote." });
       remoteAdd.positional(strings, { name: "NAME", completer: new Branches() });
       remoteAdd.positional(choices(["https", "ssh"]), { name: "KIND" });
-      remote.command({ name: "list", about: "List remotes." });
+      remote.subcommand({ name: "list", about: "List remotes." });
       git
     }
 
@@ -269,13 +269,13 @@ no candidates.
 
     test("__complete is reserved") {
       let cli = new Command({ name: "frob" });
-      cli.command({ name: "__complete" });
+      cli.subcommand({ name: "__complete" });
       let error = cli.parse(["x"]) as ArgError orelse panic();
       assert(error.message == "invalid command spec: command name '__complete' is reserved for completions");
       assert(shown(cli.complete([""])) == "(none)");
       let deeper = new Command({ name: "frob" });
-      let sub = deeper.command({ name: "sub" });
-      sub.command({ name: "__complete" });
+      let sub = deeper.subcommand({ name: "sub" });
+      sub.subcommand({ name: "__complete" });
       assert(deeper.problems.isEmpty);
     }
 
@@ -362,7 +362,7 @@ the name for itself.
       let error = plain.parse(["--completions", "bash"]) as ArgError orelse panic();
       assert(error.message == "unknown option --completions");
       let git = new Command({ name: "minigit", completions: true });
-      let add = git.command({ name: "add" });
+      let add = git.subcommand({ name: "add" });
       assert(git.builtInCompletions);
       assert(!add.builtInCompletions);
       let own = new Command({ name: "own", completions: true });

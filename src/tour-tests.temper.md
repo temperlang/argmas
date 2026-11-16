@@ -55,10 +55,10 @@ The subcommands example.
     test("subcommands tour") {
       let git = new Command({ name: "minigit", about: "Track files." });
       let quiet = git.flag({ name: "quiet", short: "q", inherited: true });
-      let add = git.command({ name: "add", about: "Add files." });
+      let add = git.subcommand({ name: "add", about: "Add files." });
       let force = add.flag({ name: "force", short: "f", help: "Add ignored files too." });
       let paths = add.positionals(strings, { name: "PATH", min: 1 });
-      let rm = git.command({ name: "rm", about: "Remove files.", aliases: ["remove"] });
+      let rm = git.subcommand({ name: "rm", about: "Remove files.", aliases: ["remove"] });
 
       let args = git.parse(["add", "-qf", "a.txt"]) as Args orelse panic();
       let ran = when (args.command) {

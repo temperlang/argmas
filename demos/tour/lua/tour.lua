@@ -18,7 +18,7 @@ local cli = Command(CommandSpec("pack", "Pack files into archives.", "1.0.0"))
 -- name, short, help, env, negatable, inherited
 local verbose = cli:flag(FlagSpec("verbose", "v", "Say what's happening.", nil, nil, true))
 
-local add = cli:command(SubcommandSpec("add", "Add files to an archive."))
+local add = cli:subcommand(SubcommandSpec("add", "Add files to an archive."))
 -- name, short, help, env
 local level = add:optionOr(ints, 6, OptionSpec("level", "l", "How hard to compress.", "PACK_LEVEL"))
 local mode = add:option(choices({ "fast", "small" }), OptionSpec("mode", nil, "What to favor."))
@@ -27,7 +27,7 @@ local archive = add:positional(strings, PositionalSpec("ARCHIVE", "The archive t
 local files = add:positionals(strings, PositionalSpec("FILE", "Files to add.", 1))
 
 -- name, about, aliases
-local list = cli:command(SubcommandSpec("list", "List an archive's files.", { "ls" }))
+local list = cli:subcommand(SubcommandSpec("list", "List an archive's files.", { "ls" }))
 local listed = list:positional(strings, PositionalSpec("ARCHIVE", "The archive to list."))
 
 -- Argmas reads environment variables through a table with `get`, so

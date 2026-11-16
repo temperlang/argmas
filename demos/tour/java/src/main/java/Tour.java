@@ -30,13 +30,13 @@ public class Tour {
         // `short` is a keyword in Java, so its setter is `short_`.
         var verbose = cli.flag(new FlagSpec.Builder().name("verbose").short_("v").help("Say what's happening.").inherited(true).build());
 
-        var add = cli.command(new SubcommandSpec.Builder().name("add").about("Add files to an archive.").build());
+        var add = cli.subcommand(new SubcommandSpec.Builder().name("add").about("Add files to an archive.").build());
         var level = add.optionOr(ints, 6, new OptionSpec.Builder().name("level").short_("l").help("How hard to compress.").env("PACK_LEVEL").build());
         var mode = add.option(choices(List.of("fast", "small")), new OptionSpec.Builder().name("mode").help("What to favor.").build());
         var archive = add.positional(strings, new PositionalSpec.Builder().name("ARCHIVE").help("The archive to add to.").build());
         var files = add.positionals(strings, new PositionalSpec.Builder().name("FILE").min(1).help("Files to add.").build());
 
-        var list = cli.command(new SubcommandSpec.Builder().name("list").about("List an archive's files.").aliases(List.of("ls")).build());
+        var list = cli.subcommand(new SubcommandSpec.Builder().name("list").about("List an archive's files.").aliases(List.of("ls")).build());
         var listed = list.positional(strings, new PositionalSpec.Builder().name("ARCHIVE").help("The archive to list.").build());
 
         // Values to run with, text to print (help and version), or a mistake.
@@ -47,7 +47,7 @@ public class Tour {
         if (result instanceof Args args) {
             if (args.getCommand().eq(add)) {
                 System.out.println("add to " + args.getValue(archive) + ": " + String.join(", ", args.getValue(files)));
-                var source = args.source(level.param);
+                var source = args.source(level.getParam());
                 var origin = source.eq(Source.absent) ? "default" : source.getName();
                 System.out.println("level: " + args.getValue(level) + " (" + origin + ")");
                 var chosen = args.getMaybe(mode);

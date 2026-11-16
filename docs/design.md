@@ -50,7 +50,9 @@ when (cli.parse(argv, env)) {
   (Boolean), `count` (Int), `option` (`T?`, null when not given),
   `optionOr` (`T`, with a default), `required` (`T`), `repeated`
   (`List<T>`), `positional` (`T`, exactly one), and `positionals`
-  (`List<T>`, from `min` to `max`).
+  (`List<T>`, from `min` to `max`). Each returns its handle as
+  `Arg<T>`, or `MaybeArg<T>` for `option`, the types `args.get`
+  takes, so every language sees the value's type in the handle's.
 - Settings are object literals (property bags), Temper's way of naming
   arguments; backends without named arguments get builders, as elsewhere
   in Temper's output.
@@ -87,11 +89,11 @@ As built in the second slice:
 ```temper
 let cli = new Command({ name: "frob", about: "Frobnicate files." });
 let verbose = cli.count({ name: "verbose", short: "v", inherited: true });
-let add = cli.command({ name: "add", about: "Add a file.", aliases: ["a"] });
+let add = cli.subcommand({ name: "add", about: "Add a file.", aliases: ["a"] });
 let force = add.flag({ name: "force", short: "f" });
-let rm = cli.command({ name: "rm", about: "Remove a file." });
-let remote = cli.command({ name: "remote", about: "Manage remotes." });
-let remoteAdd = remote.command({ name: "add", about: "Add a remote." });
+let rm = cli.subcommand({ name: "rm", about: "Remove a file." });
+let remote = cli.subcommand({ name: "remote", about: "Manage remotes." });
+let remoteAdd = remote.subcommand({ name: "add", about: "Add a remote." });
 
 // After matching `Output` and `ArgError` as above:
 let args = cli.parse(argv, env) as Args orelse ...;
@@ -103,7 +105,7 @@ when (args.command) {
 }
 ```
 
-- `cli.command({ ... })` returns a `Command` with its own arguments,
+- `cli.subcommand({ ... })` returns a `Command` with its own arguments,
   help, errors, and subcommands; `SubcommandSpec` has `name`, `about`,
   `aliases`, `hiddenAliases`, `commandOptional`, and `version`.
 - Options and flags marked `inherited` are accepted by every
@@ -577,6 +579,15 @@ the API, and the choice made for each:
   shells here yet.
 - A declared default subcommand, decided against for now; revisit if
   `commandOptional` proves awkward.
+- `args.within(cmd)`, true when `cmd` or a subcommand under it ran,
+  for code shared by a group of subcommands (`remote add` and `remote
+  rm` both under `remote`). Deferred until a program needs it;
+  `args.command.ancestors` covers it meanwhile.
+- `args.command == add` reads poorly in C# and Java (`Eq`, `eq`) only
+  because tempest translates a user-defined `@operator("==")` to an
+  `eq` method rather than to the language's own equality. That's a
+  planned tempest fix, so Argmas keeps `==` rather than adding a
+  method such as `args.ran(add)`.
 - A flag that defaults to true, for `--no-color` style flags: today a
   flag is false unless given or set by its environment variable.
 - Options taking `Int64` values.

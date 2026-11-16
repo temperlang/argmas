@@ -40,13 +40,13 @@ def main():
     cli = Command(CommandSpec(name="pack", about="Pack files into archives.", version="1.0.0"))
     verbose = cli.flag(FlagSpec(name="verbose", short="v", help_="Say what's happening.", inherited=True))
 
-    add = cli.command(SubcommandSpec(name="add", about="Add files to an archive."))
+    add = cli.subcommand(SubcommandSpec(name="add", about="Add files to an archive."))
     level = add.option_or(ints, 6, OptionSpec(name="level", short="l", help_="How hard to compress.", env="PACK_LEVEL"))
     mode = add.option(choices(["fast", "small"]), OptionSpec(name="mode", help_="What to favor."))
     archive = add.positional(strings, PositionalSpec(name="ARCHIVE", help_="The archive to add to."))
     files = add.positionals(strings, PositionalSpec(name="FILE", min_=1, help_="Files to add."))
 
-    list_ = cli.command(SubcommandSpec(name="list", about="List an archive's files.", aliases=["ls"]))
+    list_ = cli.subcommand(SubcommandSpec(name="list", about="List an archive's files.", aliases=["ls"]))
     listed = list_.positional(strings, PositionalSpec(name="ARCHIVE", help_="The archive to list."))
 
     # Values to run with, text to print (help and version), or a mistake.

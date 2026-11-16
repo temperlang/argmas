@@ -11,7 +11,7 @@ use argmas::builders::{
     CommandSpecBuilder, FlagSpecBuilder, OptionSpecBuilder, PositionalSpecBuilder, SubcommandSpecBuilder,
 };
 use argmas::{
-    choices, ints, strings, Arg, ArgError, Args, Command, Environment, EnvironmentTrait, MaybeArg, Output,
+    choices, ints, strings, ArgError, Args, Command, Environment, EnvironmentTrait, Output,
     ParseResultTrait, Source,
 };
 
@@ -42,54 +42,54 @@ temper_core::impl_any_value_trait!(OsEnvironment, [Environment]);
 fn main() -> ExitCode {
     // The command, declared once, with builders for Temper's property
     // bags. Each handle has its type: `level` gives an i32 and `files` a
-    // list of strings. `Args::get_value` takes an `Arg<T>`, so the handles
-    // are wrapped as they're made.
+    // list of strings.
     let cli = Command::new(
         CommandSpecBuilder { name: s("pack") }.options().about(s("Pack files into archives.")).version(s("1.0.0")).build(),
     );
-    let verbose = Arg::new(
-        cli.flag(
-            FlagSpecBuilder { name: s("verbose") }
-                .options()
-                .short(s("v"))
-                .help(s("Say what's happening."))
-                .inherited(true)
-                .build(),
-        ),
+    let verbose = cli.flag(
+        FlagSpecBuilder { name: s("verbose") }
+            .options()
+            .short(s("v"))
+            .help(s("Say what's happening."))
+            .inherited(true)
+            .build(),
     );
 
-    let add = cli.command(SubcommandSpecBuilder { name: s("add") }.options().about(s("Add files to an archive.")).build());
-    let level_spec = OptionSpecBuilder { name: s("level") }
-        .options()
-        .short(s("l"))
-        .help(s("How hard to compress."))
-        .env(s("PACK_LEVEL"))
-        .build();
-    let level = add.option_or(ints(), 6, level_spec);
-    let mode = MaybeArg::new(add.option(
+    let add = cli.subcommand(SubcommandSpecBuilder { name: s("add") }.options().about(s("Add files to an archive.")).build());
+    let level = add.option_or(
+        ints(),
+        6,
+        OptionSpecBuilder { name: s("level") }
+            .options()
+            .short(s("l"))
+            .help(s("How hard to compress."))
+            .env(s("PACK_LEVEL"))
+            .build(),
+    );
+    let mode = add.option(
         choices([s("fast"), s("small")]),
         OptionSpecBuilder { name: s("mode") }.options().help(s("What to favor.")).build(),
-    ));
-    let archive = Arg::new(add.positional(
+    );
+    let archive = add.positional(
         strings(),
         PositionalSpecBuilder { name: s("ARCHIVE") }.options().help(s("The archive to add to.")).build(),
-    ));
-    let files = Arg::new(add.positionals(
+    );
+    let files = add.positionals(
         strings(),
         PositionalSpecBuilder { name: s("FILE") }.options().min(1).help(s("Files to add.")).build(),
-    ));
+    );
 
-    let list = cli.command(
+    let list = cli.subcommand(
         SubcommandSpecBuilder { name: s("list") }
             .options()
             .about(s("List an archive's files."))
             .aliases(Arc::new(vec![s("ls")]))
             .build(),
     );
-    let listed = Arg::new(list.positional(
+    let listed = list.positional(
         strings(),
         PositionalSpecBuilder { name: s("ARCHIVE") }.options().help(s("The archive to list.")).build(),
-    ));
+    );
 
     // Values to run with, text to print (help and version), or a mistake,
     // told apart with `temper_core::cast`.
@@ -101,7 +101,7 @@ fn main() -> ExitCode {
             println!("add to {}: {}", args.get_value(archive.clone()), names.join(", "));
             let source = args.source(level.param());
             let origin = if source == Source::absent() { s("default") } else { source.name() };
-            println!("level: {} ({})", args.get_value(Arg::new(level.clone())), origin);
+            println!("level: {} ({})", args.get_value(level.clone()), origin);
             println!("mode: {}", args.get_maybe(mode.clone()).unwrap_or_else(|| s("any")));
         } else if args.command() == list {
             println!("list {}", args.get_value(listed.clone()));

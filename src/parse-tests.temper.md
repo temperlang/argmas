@@ -12,15 +12,15 @@ with commas), `help` or `version`, or an error's kind and message.
 
     class Frob {
       public cli: Command;
-      public verbose: Counter;
-      public color: Flag;
-      public quiet: Flag;
-      public level: Value<Int>;
-      public output: MaybeValue<String>;
-      public mode: MaybeValue<String>;
-      public tags: Values<String>;
-      public ratio: MaybeValue<Float64>;
-      public files: Values<String>;
+      public verbose: Arg<Int>;
+      public color: Arg<Boolean>;
+      public quiet: Arg<Boolean>;
+      public level: Arg<Int>;
+      public output: MaybeArg<String>;
+      public mode: MaybeArg<String>;
+      public tags: Arg<List<String>>;
+      public ratio: MaybeArg<Float64>;
+      public files: Arg<List<String>>;
 
       public constructor() {
         let cli = new Command({ name: "frob", about: "Frobnicate files.", version: "1.2.0" });

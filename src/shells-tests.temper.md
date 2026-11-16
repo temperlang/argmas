@@ -229,7 +229,7 @@ the names `--completions` does.
 
     test("shells by name") {
       let git = new Command({ name: "minigit" });
-      let add = git.command({ name: "add" });
+      let add = git.subcommand({ name: "add" });
       assert(add.completionScript(Shell.fish) == git.completionScript(Shell.fish));
       assert(Shell.named("bash") == Shell.bash);
       assert(Shell.named("powershell") == Shell.powershell);

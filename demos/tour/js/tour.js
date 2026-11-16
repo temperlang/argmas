@@ -16,13 +16,13 @@ import {
 const cli = new Command(CommandSpec.new({ name: "pack", about: "Pack files into archives.", version: "1.0.0" }));
 const verbose = cli.flag(FlagSpec.new({ name: "verbose", short: "v", help: "Say what's happening.", inherited: true }));
 
-const add = cli.command(SubcommandSpec.new({ name: "add", about: "Add files to an archive." }));
+const add = cli.subcommand(SubcommandSpec.new({ name: "add", about: "Add files to an archive." }));
 const level = add.optionOr(ints, 6, OptionSpec.new({ name: "level", short: "l", help: "How hard to compress.", env: "PACK_LEVEL" }));
 const mode = add.option(choices(["fast", "small"]), OptionSpec.new({ name: "mode", help: "What to favor." }));
 const archive = add.positional(strings, PositionalSpec.new({ name: "ARCHIVE", help: "The archive to add to." }));
 const files = add.positionals(strings, PositionalSpec.new({ name: "FILE", min: 1, help: "Files to add." }));
 
-const list = cli.command(SubcommandSpec.new({ name: "list", about: "List an archive's files.", aliases: ["ls"] }));
+const list = cli.subcommand(SubcommandSpec.new({ name: "list", about: "List an archive's files.", aliases: ["ls"] }));
 const listed = list.positional(strings, PositionalSpec.new({ name: "ARCHIVE", help: "The archive to list." }));
 
 // Argmas reads environment variables through an object with `get`, so

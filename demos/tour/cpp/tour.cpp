@@ -50,7 +50,7 @@ int main(int argc, char ** argv) {
   auto verbose = cli->flag(FlagSpec::make("verbose", "v", "Say what's happening.", nullptr, nullptr, true));
 
   // name, about, aliases
-  auto add = cli->command(SubcommandSpec::make("add", "Add files to an archive."));
+  auto add = cli->subcommand(SubcommandSpec::make("add", "Add files to an archive."));
   // name, short, help, env
   auto level = add->optionOr(argmas::ints(), 6, OptionSpec::make("level", "l", "How hard to compress.", "PACK_LEVEL"));
   auto mode = add->option(argmas::choices(std::make_shared<Strings>(Strings{"fast", "small"})), OptionSpec::make("mode", nullptr, "What to favor."));
@@ -58,30 +58,28 @@ int main(int argc, char ** argv) {
   auto archive = add->positional(argmas::strings(), PositionalSpec::make("ARCHIVE", "The archive to add to."));
   auto files = add->positionals(argmas::strings(), PositionalSpec::make("FILE", "Files to add.", 1));
 
-  auto list = cli->command(SubcommandSpec::make("list", "List an archive's files.", std::make_shared<Strings>(Strings{"ls"})));
+  auto list = cli->subcommand(SubcommandSpec::make("list", "List an archive's files.", std::make_shared<Strings>(Strings{"ls"})));
   auto listed = list->positional(argmas::strings(), PositionalSpec::make("ARCHIVE", "The archive to list."));
 
   // Values to run with, text to print (help and version), or a mistake.
   auto result = cli->parse(std::make_shared<Strings>(argv + 1, argv + argc), std::make_shared<OsEnvironment>());
   if (auto args = std::dynamic_pointer_cast<Args>(result)) {
-    // getValue and getMaybe take the base handle types, so C++ needs the
-    // value type named to deduce them.
     if (args->get_command()->eq(add)) {
-      std::shared_ptr<Strings> paths = args->getValue<std::shared_ptr<Strings>>(files);
+      std::shared_ptr<Strings> paths = args->getValue(files);
       std::string names;
       for (auto const & file : *paths) {
         names += (names.empty() ? "" : ", ") + file.str();
       }
-      std::cout << "add to " << args->getValue<Str>(archive).str() << ": " << names << "\n";
-      auto source = args->source(level->param);
+      std::cout << "add to " << args->getValue(archive).str() << ": " << names << "\n";
+      auto source = args->source(level->get_param());
       std::string origin = source->eq(Source::absent()) ? "default" : source->name.str();
-      std::cout << "level: " << args->getValue<int32_t>(level) << " (" << origin << ")\n";
-      NullableParam<Str> chosen = args->getMaybe<Str>(mode);
+      std::cout << "level: " << args->getValue(level) << " (" << origin << ")\n";
+      NullableParam<Str> chosen = args->getMaybe(mode);
       std::cout << "mode: " << (chosen.has_value ? chosen.value.str() : "any") << "\n";
     } else if (args->get_command()->eq(list)) {
-      std::cout << "list " << args->getValue<Str>(listed).str() << "\n";
+      std::cout << "list " << args->getValue(listed).str() << "\n";
     }
-    std::cout << "verbose: " << (args->getValue<bool>(verbose) ? "yes" : "no") << "\n";
+    std::cout << "verbose: " << (args->getValue(verbose) ? "yes" : "no") << "\n";
   } else if (auto output = std::dynamic_pointer_cast<Output>(result)) {
     std::cout << output->text().str();
   } else if (auto error = std::dynamic_pointer_cast<ArgError>(result)) {

@@ -6,7 +6,7 @@ as input for refining the API. In Temper:
 
 ```temper
 let cli = new Command({ name: "pack", about: "Pack files into archives." });
-let add = cli.command({ name: "add" });
+let add = cli.subcommand({ name: "add" });
 let level = add.optionOr(ints, 6, { name: "level", short: "l", env: "PACK_LEVEL" });
 when (cli.parse(argv, env)) {
   is Args -> ...;     // args.get(level), an Int
@@ -19,42 +19,42 @@ Everywhere, `args.get(h)` is two methods, `getValue` for handles that
 always have a value and `getMaybe` for options that may be absent, as
 the [design](design.md#temper-constraints-met-so-far) explains, and
 `ints`, `strings`, and `choices` are named so no language's keywords
-get in the way.
+get in the way. Declaring an argument (`flag`, `optionOr`, and the
+rest) returns `Arg<T>` or `MaybeArg<T>`, the types `getValue` and
+`getMaybe` take, so each language knows the value's type from the
+handle's.
 
 ## C++
 
 ```cpp
 auto cli = Command::make(CommandSpec::make("pack", "Pack files into archives."));
-auto add = cli->command(SubcommandSpec::make("add"));
+auto add = cli->subcommand(SubcommandSpec::make("add"));
 auto level = add->optionOr(argmas::ints(), 6, OptionSpec::make("level", "l", nullptr, "PACK_LEVEL"));
 auto result = cli->parse(std::make_shared<std::vector<Str>>(argv + 1, argv + argc), env);
-if (auto args = std::dynamic_pointer_cast<Args>(result)) { args->getValue<int32_t>(level); }
+if (auto args = std::dynamic_pointer_cast<Args>(result)) { args->getValue(level); }
 ```
 
 - Specs are `make` functions with every setting in order, `nullptr`
   for those left out, so a call needs a comment to be read.
-- `getValue` and `getMaybe` take the base handle types (`Arg<T>`), so
-  C++ can't deduce `T` from a `Flag` or `Value<T>`, and every read
-  names the type: `getValue<bool>(verbose)`.
+- Handles are `std::shared_ptr<Arg<T>>`, so `getValue(level)` deduces
+  its type, an `int32_t`.
 - Lists are `std::shared_ptr<std::vector<Str>>`; `getMaybe` gives a
   `NullableParam` with `has_value` and `value`; statics and globals
   are functions (`Source::absent()`, `argmas::ints()`); getters mix
-  styles (`get_command()`, `get_exitStatus()`).
+  styles (`get_command()`, `get_exitStatus()`, `get_param()`).
 - `Environment` is a plain abstract class to implement.
 
 ## C\#
 
 ```csharp
 var cli = new Command(new CommandSpec("pack", about: "Pack files into archives."));
-var add = cli.Command_(new SubcommandSpec("add"));
+var add = cli.Subcommand(new SubcommandSpec("add"));
 var level = add.OptionOr(Ints, 6, new OptionSpec("level", @short: "l", env: "PACK_LEVEL"));
 switch (cli.Parse(args, env)) { case Args parsed: parsed.GetValue(level); break; }
 ```
 
 - Bags are constructors with named arguments, which reads well;
   `short` is `@short`.
-- `command` is `Command_`, since a C# method can't share its class's
-  name. This reads worst of all the languages.
 - `GetMaybe` gives Temper's `Optional<T>`, not `T?`, so a default
   needs `.OrNull() ?? "any"` (with `using TemperLang.Core`).
 - Commands compare with `Eq`, not `==`. A program's top-level
@@ -64,7 +64,7 @@ switch (cli.Parse(args, env)) { case Args parsed: parsed.GetValue(level); break;
 
 ```java
 var cli = new Command(new CommandSpec.Builder().name("pack").about("Pack files into archives.").build());
-var add = cli.command(new SubcommandSpec.Builder().name("add").build());
+var add = cli.subcommand(new SubcommandSpec.Builder().name("add").build());
 var level = add.optionOr(ints, 6, new OptionSpec.Builder().name("level").short_("l").env("PACK_LEVEL").build());
 if (cli.parse(List.of(argv), System::getenv) instanceof Args args) { args.getValue(level); }
 ```
@@ -72,14 +72,14 @@ if (cli.parse(List.of(argv), System::getenv) instanceof Args args) { args.getVal
 - Bags are builders (or constructors with settings in order);
   `short` is a keyword, so its setter is `short_`.
 - `Environment` has one method, so `System::getenv` is one.
-- Getters are `getCommand()` and `getExitStatus()`, but a handle's
-  `param` is a field. Commands compare with `eq`, not `equals`.
+- Getters are `getCommand()`, `getExitStatus()`, and a handle's
+  `getParam()`. Commands compare with `eq`, not `equals`.
 
 ## JavaScript
 
 ```js
 const cli = new Command(CommandSpec.new({ name: "pack", about: "Pack files into archives." }));
-const add = cli.command(SubcommandSpec.new({ name: "add" }));
+const add = cli.subcommand(SubcommandSpec.new({ name: "add" }));
 const level = add.optionOr(ints, 6, OptionSpec.new({ name: "level", short: "l", env: "PACK_LEVEL" }));
 const result = cli.parse(process.argv.slice(2), { get: (name) => process.env[name] ?? null });
 if (result instanceof Args) { result.getValue(level); }
@@ -95,7 +95,7 @@ if (result instanceof Args) { result.getValue(level); }
 
 ```lua
 local cli = Command(CommandSpec("pack", "Pack files into archives."))
-local add = cli:command(SubcommandSpec("add"))
+local add = cli:subcommand(SubcommandSpec("add"))
 local level = add:optionOr(ints, 6, OptionSpec("level", "l", nil, "PACK_LEVEL"))
 local result = cli:parse({ ... }, { get = function(_, name) return os.getenv(name) end })
 if temper.instance_of(result, Args) then result:getValue(level) end
@@ -112,7 +112,7 @@ if temper.instance_of(result, Args) then result:getValue(level) end
 
 ```python
 cli = Command(CommandSpec(name="pack", about="Pack files into archives."))
-add = cli.command(SubcommandSpec(name="add"))
+add = cli.subcommand(SubcommandSpec(name="add"))
 level = add.option_or(ints, 6, OptionSpec(name="level", short="l", env="PACK_LEVEL"))
 match cli.parse(sys.argv[1:], env):
     case Args() as args: args.get_value(level)
@@ -128,8 +128,8 @@ match cli.parse(sys.argv[1:], env):
 
 ```rust
 let cli = Command::new(CommandSpecBuilder { name: s("pack") }.options().about(s("Pack files into archives.")).build());
-let add = cli.command(SubcommandSpecBuilder { name: s("add") }.build());
-let level = Arg::new(add.option_or(ints(), 6, OptionSpecBuilder { name: s("level") }.options().env(s("PACK_LEVEL")).build()));
+let add = cli.subcommand(SubcommandSpecBuilder { name: s("add") }.build());
+let level = add.option_or(ints(), 6, OptionSpecBuilder { name: s("level") }.options().env(s("PACK_LEVEL")).build());
 let result = cli.parse(argv, Some(Environment::new(OsEnvironment(Arc::new(())))));
 if let Some(args) = temper_core::cast::<Args>(result.clone()) { args.get_value(level.clone()); }
 ```
@@ -139,8 +139,7 @@ if let Some(args) = temper_core::cast::<Args>(result.clone()) { args.get_value(l
   `Arc<String>` (`s` above makes one), and the setters, unlike `new`,
   don't take `&str`.
 - `get_value` and `get_maybe` take `Arg<T>` and `MaybeArg<T>` by
-  value, so concrete handles are wrapped with `Arg::new` and cloned
-  for each read.
+  value, so a handle read more than once is cloned for each read.
 - Results are told apart with `temper_core::cast`, so the tour
   depends on temper-core too; there's no enum to `match`.
 - Implementing `Environment` takes a tuple struct around an `Arc`,
@@ -149,21 +148,29 @@ if let Some(args) = temper_core::cast::<Args>(result.clone()) { args.get_value(l
 
 ## Worth changing
 
+Changed already: subcommands are declared with `subcommand`, matching
+`SubcommandSpec` (it was `command`, which C# made `Command_`), and
+declaring an argument returns `Arg<T>` or `MaybeArg<T>` rather than
+classes such as `Flag` and `Value<T>`, so C++ deduces `getValue`'s
+type and Rust needs no `Arg::new`.
+
 In Argmas's API:
 
-- **`command` for subcommands.** C#'s `Command_` reads badly, and
-  `subcommand` would match `SubcommandSpec` in every language.
-- **Handles' declared types.** `flag`, `optionOr`, and the others
-  return concrete classes (`Flag`, `Value<T>`); returning `Arg<T>` and
-  `MaybeArg<T>` would let C++ deduce `getValue`'s type and spare Rust
-  its `Arg::new` wrapping, at no cost in Temper.
-- **Matching the command that ran.** `args.command` compared with
-  `eq` reads poorly outside Python and Rust; `args.ran(add)` would
-  read the same everywhere.
+- **Names renamed for keywords.** One setting still meets keywords:
+  `short` is `short_` in C++ and Java and `@short` in C#. It's the
+  usual name (clap's too), and `shortName` would be longer
+  everywhere, so it stays. No method or class name collides any more.
 
 In Temper's translations, not Argmas: Lua's and C++'s positional-only
-bags, Python's `help_`, Rust's `Arc<String>` setters, C#'s `Optional`
-for `getMaybe`, and JavaScript's `new` taking positional settings.
-Generated code also carries the tests' helpers: C++'s `init.hpp`
-includes std's testing header, and Rust's crate warns about unused
-test helpers when built as a dependency.
+bags; Python's `help_`, `min_`, and `max_` (builtins, but legal as
+keyword arguments, and their properties keep the plain names); Rust's
+`Arc<String>` setters; C#'s `Optional` for `getMaybe`; and
+JavaScript's `new` taking positional settings. Commands compare with
+an `eq` method outside Python and Rust because tempest translates a
+user-defined `@operator("==")` to that method rather than to each
+language's own equality (C#'s and C++'s `==`, Java's `equals`, Lua's
+`__eq`); that's a planned tempest fix, after which `args.command ==
+add` reads naturally wherever the language allows it (JavaScript has
+no user-defined equality). Generated code also carries the tests'
+helpers: C++'s `init.hpp` includes std's testing header, and Rust's
+crate warns about unused test helpers when built as a dependency.

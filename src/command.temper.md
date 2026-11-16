@@ -64,10 +64,10 @@ since it's another option in help; a program can instead print
       public completions: Boolean = false,
     ) {}
 
-Settings for a subcommand, declared with `cli.command`: its name, what
-it's about (shown in its parent's list of commands and atop its own
-help), other names it answers to, and, as for `CommandSpec`, whether
-its own subcommands may be left out.
+Settings for a subcommand, declared with `cli.subcommand`: its name,
+what it's about (shown in its parent's list of commands and atop its
+own help), other names it answers to, and, as for `CommandSpec`,
+whether its own subcommands may be left out.
 
     export class SubcommandSpec(
       public name: String,
@@ -266,7 +266,10 @@ A handle reads its argument's value from a parsed result. `args.get`
 takes any handle: those that always have a value are `Arg`s, and those
 that might not are `MaybeArg`s, whose `get` is nullable. (Temper's
 type parameters can't stand for nullable types, so one interface can't
-cover both.)
+cover both.) Declaring an argument returns one of these two
+interfaces, not the class below that implements it, so every language
+sees the value's type in the handle's: C++ deduces `getValue`'s type,
+and Rust needs no wrapping.
 
     export interface Arg<T> {
       public get param(): Param;
@@ -309,14 +312,14 @@ Not given, so any default applies.
 A flag reads as true when its last occurrence set it, or its default
 (false) when absent.
 
-    export class Flag(public param: Param) extends Arg<Boolean> {
+    class Flag(public param: Param) extends Arg<Boolean> {
       public read(found: Found): Boolean { found.last == "true" }
     }
 
 A counted flag reads as the sum of its counts: one per `-v`, or the
 number from the environment.
 
-    export class Counter(public param: Param) extends Arg<Int> {
+    class Counter(public param: Param) extends Arg<Int> {
       public read(found: Found): Int {
         var n = 0;
         for (let v of found.values) { n += ints.parse(v) orelse 0; }
@@ -326,7 +329,7 @@ number from the environment.
 
 An option with no default and not required might be absent.
 
-    export class MaybeValue<T>(
+    class MaybeValue<T>(
       public param: Param,
       private type: ValueType<T>,
     ) extends MaybeArg<T> {
@@ -340,7 +343,7 @@ An option with no default and not required might be absent.
 An option with a default, a required option, or a single positional
 argument always has a value.
 
-    export class Value<T>(
+    class Value<T>(
       public param: Param,
       private type: ValueType<T>,
       private fallback: T?,
@@ -355,7 +358,7 @@ argument always has a value.
 A repeated option or a list of positional arguments has every value
 given, in order.
 
-    export class Values<T>(
+    class Values<T>(
       public param: Param,
       private type: ValueType<T>,
     ) extends Arg<List<T>> {
@@ -380,7 +383,7 @@ before reading any arguments.
       private specProblems: ListBuilder<String> = new ListBuilder<String>();
 
 The command this is a subcommand of, its subcommands, and the other
-names it answers to, all set by `command`.
+names it answers to, all set by `subcommand`.
 
       private var up: Command? = null;
       private subs: ListBuilder<Command> = new ListBuilder<Command>();
@@ -403,47 +406,47 @@ subcommand's ending with where it is (`in frob add`).
 A flag: true when given, false when not (or as its environment
 variable says).
 
-      public flag(spec: FlagSpec): Flag {
+      public flag(spec: FlagSpec): Arg<Boolean> {
         new Flag(addParam(ParamKind.flag, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, false, 0, 0, null, [], booleanExpected, new NoValueChecker(), null))
       }
 
 A counted flag: the number of times it's given, so `-vvv` is 3.
 
-      public count(spec: FlagSpec): Counter {
+      public count(spec: FlagSpec): Arg<Int> {
         new Counter(addParam(ParamKind.count, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, true, 0, 0, null, [], "a count", new NoValueChecker(), null))
       }
 
 An option that may be left out; its value is null then. Given more
 than once, the last value wins.
 
-      public option<T>(type: ValueType<T>, spec: OptionSpec): MaybeValue<T> {
+      public option<T>(type: ValueType<T>, spec: OptionSpec): MaybeArg<T> {
         new MaybeValue<T>(optionParam(type, spec, false, false, null), type)
       }
 
 An option with a default, used when it's given neither as an argument
 nor in its environment variable.
 
-      public optionOr<T>(type: ValueType<T>, fallback: T, spec: OptionSpec): Value<T> {
+      public optionOr<T>(type: ValueType<T>, fallback: T, spec: OptionSpec): Arg<T> {
         new Value<T>(optionParam(type, spec, false, false, type.format(fallback)), type, fallback)
       }
 
 An option that must be given, as an argument or in its environment
 variable.
 
-      public required<T>(type: ValueType<T>, spec: OptionSpec): Value<T> {
+      public required<T>(type: ValueType<T>, spec: OptionSpec): Arg<T> {
         new Value<T>(optionParam(type, spec, true, false, null), type, null)
       }
 
 An option that may be given any number of times, keeping every value.
 Its environment variable gives one value.
 
-      public repeated<T>(type: ValueType<T>, spec: OptionSpec): Values<T> {
+      public repeated<T>(type: ValueType<T>, spec: OptionSpec): Arg<List<T>> {
         new Values<T>(optionParam(type, spec, false, true, null), type)
       }
 
 One positional argument, which must be there.
 
-      public positional<T>(type: ValueType<T>, spec: PositionalSpec): Value<T> {
+      public positional<T>(type: ValueType<T>, spec: PositionalSpec): Arg<T> {
         new Value<T>(positionalParam(type, spec.name, spec.help, 1, 1, spec.completer), type, null)
       }
 
@@ -451,7 +454,7 @@ Positional arguments, from `spec.min` to `spec.max`. With several
 lists, each gets its minimum, and the rest go to the earliest that
 takes more, so `SRC... DEST` works.
 
-      public positionals<T>(type: ValueType<T>, spec: PositionalSpec): Values<T> {
+      public positionals<T>(type: ValueType<T>, spec: PositionalSpec): Arg<List<T>> {
         new Values<T>(positionalParam(type, spec.name, spec.help, spec.min, spec.max, spec.completer), type)
       }
 
@@ -647,11 +650,11 @@ grandparent's, and so on.
 
 ## Subcommands
 
-`cli.command({ name: "add", about: "Add a file." })` declares a
+`cli.subcommand({ name: "add", about: "Add a file." })` declares a
 subcommand and returns its own `Command`, with its own arguments, help,
 errors, and, if it likes, subcommands of its own.
 
-      public command(spec: SubcommandSpec): Command {
+      public subcommand(spec: SubcommandSpec): Command {
         let sub = new Command(new CommandSpec(spec.name, spec.about, spec.version, spec.commandOptional, Style.gnu, null, false));
         sub.up = this;
         sub.otherNames = spec.aliases;

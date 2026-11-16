@@ -15,19 +15,19 @@ or which command's help, or an error's kind and message.
 
     class Tree {
       public cli: Command;
-      public verbose: Counter;
-      public dir: MaybeValue<String>;
+      public verbose: Arg<Int>;
+      public dir: MaybeArg<String>;
       public add: Command;
-      public force: Flag;
-      public addFiles: Values<String>;
+      public force: Arg<Boolean>;
+      public addFiles: Arg<List<String>>;
       public rm: Command;
-      public cached: Flag;
-      public rmFile: Value<String>;
+      public cached: Arg<Boolean>;
+      public rmFile: Arg<String>;
       public remote: Command;
-      public dryRun: Flag;
+      public dryRun: Arg<Boolean>;
       public remoteAdd: Command;
-      public remoteName: Value<String>;
-      public remoteUrl: Value<String>;
+      public remoteName: Arg<String>;
+      public remoteUrl: Arg<String>;
       public remoteList: Command;
 
       public constructor() {
@@ -35,22 +35,22 @@ or which command's help, or an error's kind and message.
         this.cli = cli;
         verbose = cli.count({ name: "verbose", short: "v", help: "Say more.", inherited: true });
         dir = cli.option(strings, { name: "dir", short: "C", help: "Run as if started in DIR." });
-        let add = cli.command({ name: "add", about: "Add files." });
+        let add = cli.subcommand({ name: "add", about: "Add files." });
         this.add = add;
         force = add.flag({ name: "force", short: "f", help: "Add ignored files too." });
         addFiles = add.positionals(strings, { name: "FILE", min: 1, help: "Files to add." });
-        let rm = cli.command({ name: "rm", about: "Remove files.", aliases: ["remove", "del"], hiddenAliases: ["erase"] });
+        let rm = cli.subcommand({ name: "rm", about: "Remove files.", aliases: ["remove", "del"], hiddenAliases: ["erase"] });
         this.rm = rm;
         cached = rm.flag({ name: "cached", help: "Keep the file itself." });
         rmFile = rm.positional(strings, { name: "FILE", help: "The file to remove." });
-        let remote = cli.command({ name: "remote", about: "Manage remotes." });
+        let remote = cli.subcommand({ name: "remote", about: "Manage remotes." });
         this.remote = remote;
         dryRun = remote.flag({ name: "dry-run", short: "n", help: "Change nothing.", inherited: true });
-        let remoteAdd = remote.command({ name: "add", about: "Add a remote." });
+        let remoteAdd = remote.subcommand({ name: "add", about: "Add a remote." });
         this.remoteAdd = remoteAdd;
         remoteName = remoteAdd.positional(strings, { name: "NAME" });
         remoteUrl = remoteAdd.positional(strings, { name: "URL" });
-        remoteList = remote.command({ name: "list", about: "List remotes.", aliases: ["ls"] });
+        remoteList = remote.subcommand({ name: "list", about: "List remotes.", aliases: ["ls"] });
       }
 
       public run(argv: List<String>): String { show(cli.parse(argv)) }
@@ -242,7 +242,7 @@ optional; `--` doesn't select one.
       assert(t.run(["--", "add"]) == "missingCommand: missing command; expected one of add, rm, remote");
       let cli = new Command({ name: "opt", commandOptional: true });
       let v = cli.flag({ name: "v", short: "v" });
-      let sub = cli.command({ name: "sub" });
+      let sub = cli.subcommand({ name: "sub" });
       let args = cli.parse(["-v"]) as Args orelse panic();
       assert(same(args.command, cli));
       assert(args.get(v));
@@ -269,7 +269,7 @@ commands.
     test("positionals and subcommands") {
       let cli = new Command({ name: "make", commandOptional: true });
       let target = cli.positionals(strings, { name: "TARGET", max: 1 });
-      let build = cli.command({ name: "build" });
+      let build = cli.subcommand({ name: "build" });
       let jobs = build.optionOr(ints, 1, { name: "jobs", short: "j" });
       let args = cli.parse(["x", "build", "-j", "4"]) as Args orelse panic();
       assert(same(args.command, build));
@@ -332,7 +332,7 @@ built in.
 
     test("a subcommand named help") {
       let cli = new Command({ name: "h" });
-      let mine = cli.command({ name: "help", about: "Mine." });
+      let mine = cli.subcommand({ name: "help", about: "Mine." });
       let topic = mine.positionals(strings, { name: "TOPIC" });
       let args = cli.parse(["help", "x"]) as Args orelse panic();
       assert(same(args.command, mine));
@@ -352,8 +352,8 @@ declare a version of their own; it isn't inherited.
 
     test("subcommand versions") {
       let cli = new Command({ name: "tool", version: "1.0.0" });
-      let plugin = cli.command({ name: "plugin", about: "A plugin.", version: "0.3.0" });
-      plugin.command({ name: "inner" });
+      let plugin = cli.subcommand({ name: "plugin", about: "A plugin.", version: "0.3.0" });
+      plugin.subcommand({ name: "inner" });
       let version(argv: List<String>): String {
         let r = cli.parse(argv);
         when (r) {
@@ -380,7 +380,7 @@ declare a version of their own; it isn't inherited.
       );
       // A subcommand may have a version when the top command has none.
       let bare = new Command({ name: "bare" });
-      bare.command({ name: "s", version: "2.0.0" });
+      bare.subcommand({ name: "s", version: "2.0.0" });
       assert(outcome(bare.parse(["s", "--version"])) == "version");
       assert(outcome(bare.parse(["--version"])) == "unknownOption: unknown option --version");
     }
@@ -413,7 +413,7 @@ required options, each from the top command down.
     test("subcommand error order") {
       let cli = new Command({ name: "c" });
       cli.required(strings, { name: "token", env: "C_TOKEN" });
-      let sub = cli.command({ name: "s" });
+      let sub = cli.subcommand({ name: "s" });
       sub.positional(strings, { name: "X" });
       sub.required(strings, { name: "name" });
       assert(outcome(cli.parse(["--bad", "s", "--worse"])) == "unknownOption: unknown option --bad");
@@ -433,34 +433,34 @@ where they are.
 
     test("mistakes in subcommand specs") {
       let a = new Command({ name: "a" });
-      a.command({ name: "x" });
-      a.command({ name: "x" });
+      a.subcommand({ name: "x" });
+      a.subcommand({ name: "x" });
       assert(outcome(a.parse([])) == "invalidSpec: invalid command spec: command x declared twice");
       let b = new Command({ name: "b" });
-      b.command({ name: "x", aliases: ["y"] });
-      b.command({ name: "y" });
+      b.subcommand({ name: "x", aliases: ["y"] });
+      b.subcommand({ name: "y" });
       assert(outcome(b.parse([])) == "invalidSpec: invalid command spec: command y declared twice");
       let hidden = new Command({ name: "h" });
-      hidden.command({ name: "x", hiddenAliases: ["y"] });
-      hidden.command({ name: "y" });
+      hidden.subcommand({ name: "x", hiddenAliases: ["y"] });
+      hidden.subcommand({ name: "y" });
       assert(outcome(hidden.parse([])) == "invalidSpec: invalid command spec: command y declared twice");
       let c = new Command({ name: "c" });
-      c.command({ name: "-x" });
+      c.subcommand({ name: "-x" });
       assert(outcome(c.parse([])) == "invalidSpec: invalid command spec: invalid command name '-x'");
       let d = new Command({ name: "d" });
       d.flag({ name: "verbose", short: "v", inherited: true });
-      let sub = d.command({ name: "s" });
+      let sub = d.subcommand({ name: "s" });
       sub.flag({ name: "very", short: "v" });
       assert(outcome(d.parse(["s"])) == "invalidSpec: invalid command spec: -v declared twice in d s");
       let e = new Command({ name: "e" });
-      let deeper = e.command({ name: "s" }).command({ name: "t" });
+      let deeper = e.subcommand({ name: "s" }).subcommand({ name: "t" });
       deeper.flag({ name: "x" });
       deeper.flag({ name: "x" });
       assert(outcome(e.parse([])) == "invalidSpec: invalid command spec: --x declared twice in e s t");
       // The same name at two levels is fine when it isn't inherited.
       let f = new Command({ name: "f" });
       f.flag({ name: "x" });
-      f.command({ name: "s" }).flag({ name: "x" });
+      f.subcommand({ name: "s" }).flag({ name: "x" });
       assert(outcome(f.parse(["--x", "s", "--x"])) == "ok");
     }
 

@@ -13,12 +13,12 @@ do.
 
     class Styled {
       public cli: Command;
-      public verbose: Counter;
-      public quiet: Flag;
-      public color: Flag;
-      public level: Value<Int>;
-      public output: MaybeValue<String>;
-      public files: Values<String>;
+      public verbose: Arg<Int>;
+      public quiet: Arg<Boolean>;
+      public color: Arg<Boolean>;
+      public level: Arg<Int>;
+      public output: MaybeArg<String>;
+      public files: Arg<List<String>>;
 
       public constructor(style: Style, also: Style?) {
         let cli = new Command({ name: "frob", about: "Frobnicate files.", version: "1.2.0", style, alsoStyle: also });
@@ -250,7 +250,7 @@ parent's option given too late uses the form typed.
       let cli = new Command({ name: "tool", style: Style.windows });
       let dir = cli.option(strings, { name: "dir" });
       let quiet = cli.flag({ name: "quiet", short: "q", inherited: true });
-      let add = cli.command({ name: "add", about: "Add files." });
+      let add = cli.subcommand({ name: "add", about: "Add files." });
       let force = add.flag({ name: "force", short: "f", help: "Add ignored files too." });
       add.positionals(strings, { name: "PATH" });
       let args = cli.parse(["/dir:src", "add", "/F", "/q", "/tmp/a"]) as Args orelse panic();
@@ -309,8 +309,8 @@ namespace, and in `windows`, names differing only in case clash.
       // Inherited names clash in subcommands too.
       let e = new Command({ name: "e", style: Style.windows });
       e.flag({ name: "verbose", inherited: true });
-      e.command({ name: "s" }).flag({ name: "x", short: "V" });
-      e.command({ name: "t" }).flag({ name: "VERBOSE" });
+      e.subcommand({ name: "s" }).flag({ name: "x", short: "V" });
+      e.subcommand({ name: "t" }).flag({ name: "VERBOSE" });
       assert(outcome(e.parse([])) == "invalidSpec: invalid command spec: /VERBOSE declared twice in e t");
     }
 
@@ -349,7 +349,7 @@ the long name, as decided, so `-level` with `-l` is fine.
       // An inherited long name meets a subcommand's short names there.
       let f = new Command({ name: "f", alsoStyle: Style.singleDash });
       f.flag({ name: "vq", inherited: true });
-      let s = f.command({ name: "s" });
+      let s = f.subcommand({ name: "s" });
       s.flag({ name: "verbose", short: "v" });
       s.flag({ name: "quiet", short: "q" });
       assert(outcome(f.parse([])) == "invalidSpec: invalid command spec: long name vq could also be read as -v -q in f s");
