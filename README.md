@@ -154,6 +154,10 @@ each:
 - Python
 - Rust
 
+A [tour](demos/README.md), `pack`, uses Argmas from each one, with
+identical output, and [docs/languages.md](docs/languages.md) shows
+what the API looks like in each.
+
 ## Development
 
 Written with Claude Code and Opus 5.5.
@@ -176,11 +180,20 @@ with tests beside them in `-tests` files and subcommands' tests in
 `subcommand-tests.temper.md`. `tour-tests.temper.md` checks the
 examples above.
 
+Run the tours, after `temper build` for their languages, and compare
+their output (see [demos](demos/README.md)):
+
+    uv run demos/run.py [LANGUAGE ...]
+
 `tests/shells/run.py` installs each shell's script in a throwaway
 directory and completes command lines in the real shells, skipping
 those not installed:
 
     uv run tests/shells/run.py [SHELL ...]
+
+CI ([test.yml](.github/workflows/test.yml)) runs the tests on every
+backend, the tours, and the shells: bash, zsh, fish, and PowerShell on
+Linux, bash, zsh, and fish on macOS, and PowerShell on Windows.
 
 ## License
 

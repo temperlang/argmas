@@ -1,0 +1,76 @@
+$ pack add -v --level=9 --mode fast out.pack a.txt b.txt
+add to out.pack: a.txt, b.txt
+level: 9 (argument)
+mode: fast
+verbose: yes
+(exit status 0)
+
+$ PACK_LEVEL=7 pack add out.pack a.txt
+add to out.pack: a.txt
+level: 7 (environment)
+mode: any
+verbose: no
+(exit status 0)
+
+$ pack -v ls out.pack
+list out.pack
+verbose: yes
+(exit status 0)
+
+$ pack --help
+Pack files into archives.
+
+Usage: pack [OPTIONS] COMMAND
+
+Commands:
+  add            Add files to an archive.
+  list           List an archive's files. [aliases: ls]
+  help           Show help for a command.
+
+Options:
+  -v, --verbose  Say what's happening.
+  -h, --help     Show this help and exit.
+      --version  Show the version and exit.
+(exit status 0)
+
+$ pack add --help
+Add files to an archive.
+
+Usage: pack add [OPTIONS] ARCHIVE FILE...
+
+Arguments:
+  ARCHIVE              The archive to add to.
+  FILE...              Files to add.
+
+Options:
+  -l, --level <LEVEL>  How hard to compress. [default: 6] [env: PACK_LEVEL]
+      --mode <MODE>    What to favor. [choices: fast, small]
+  -v, --verbose        Say what's happening.
+  -h, --help           Show this help and exit.
+(exit status 0)
+
+$ pack --version
+pack 1.0.0
+(exit status 0)
+
+$ pack add --mode quick out.pack a.txt
+(standard error)
+pack: invalid value 'quick' for --mode: expected one of fast, small
+Usage: pack add [OPTIONS] ARCHIVE FILE...
+Try 'pack add --help' for more information.
+(exit status 2)
+
+$ pack ad out.pack
+(standard error)
+pack: unknown command 'ad'; did you mean add?
+Usage: pack [OPTIONS] COMMAND
+Try 'pack --help' for more information.
+(exit status 2)
+
+$ pack add out.pack
+(standard error)
+pack: missing argument FILE
+Usage: pack add [OPTIONS] ARCHIVE FILE...
+Try 'pack add --help' for more information.
+(exit status 2)
+

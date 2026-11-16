@@ -501,10 +501,11 @@ Decisions, each tested in `src/complete-tests.temper.md` and
 - **Completions:** tables of words in and candidates out, goldens of
   each script, and `tests/shells/run.py`, which installs each script
   in a throwaway directory and completes command lines in the real
-  bash, zsh, fish, and PowerShell, skipping those not installed (so
-  far bash has run; the others need CI or a machine that has them).
-- **Tours:** a small example program in each language, checked in CI, as
-  the other Temper libraries have.
+  bash, zsh, fish, and PowerShell, skipping those not installed; CI
+  runs it on Linux, macOS, and Windows with each platform's shells.
+- **Tours:** a small program in each language, `pack` in
+  [demos](../demos/README.md), run with the same command lines, whose
+  output CI checks is the same in every language.
 
 ## Later: metaprogramming
 

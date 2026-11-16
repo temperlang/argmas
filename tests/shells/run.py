@@ -5,7 +5,7 @@
 
 Usage, from anywhere in the repo:
 
-    uv run tests/shells/run.py [--no-build] [SHELL ...]
+    uv run tests/shells/run.py [--no-build] [--require] [SHELL ...]
 
 Builds the Python library with Temper (`$TEMPER`, or `temper` on PATH),
 unless `--no-build`, then puts tests/shells/frob.py on PATH as `frob` in
@@ -13,9 +13,11 @@ a throwaway directory, installs each shell's script there as `frob
 --completions SHELL` prints it, and completes the command lines in CASES
 in the real shell, comparing what it offers. SHELL is any of bash, zsh,
 fish, and powershell (pwsh); shells that aren't installed are skipped,
-and the report says which ran. Each shell runs without the user's
+and the report says which ran (with `--require`, as CI runs it, a
+missing shell fails instead). Each shell runs without the user's
 configuration, with HOME in the throwaway directory, so nothing outside
-it changes. Linux and macOS only, since `frob` is a shell script.
+it changes. On Windows, `frob` is a batch file, and only PowerShell
+runs.
 
 bash and zsh are driven through a pseudo-terminal, as a user would:
 bash inserts every completion into the line (readline's
@@ -26,9 +28,7 @@ insert-completions) and the line is printed, and zsh lists them
 
 import argparse
 import os
-import pty
 import re
-import select
 import shlex
 import shutil
 import subprocess
@@ -39,6 +39,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
+WINDOWS = os.name == "nt"
 OUT = ROOT / "temper.out" / "py"
 
 # Command lines, with the cursor at the end, and what should be offered.
@@ -89,6 +90,9 @@ class Pty:
     """A shell in a pseudo-terminal, read until a marker comes."""
 
     def __init__(self, argv, env, cwd):
+        # Not on Windows, which has no pseudo-terminals.
+        import pty
+
         self.pid, self.fd = pty.fork()
         if self.pid == 0:
             os.chdir(cwd)
@@ -99,6 +103,8 @@ class Pty:
         os.write(self.fd, text.encode())
 
     def until(self, marker, timeout=20.0):
+        import select
+
         end = time.time() + timeout
         while marker.encode() not in self.buffer:
             if time.time() > end:
@@ -216,6 +222,7 @@ EXTENSIONS = {"bash": "bash", "zsh": "zsh", "fish": "fish", "powershell": "ps1"}
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--no-build", action="store_true", help="use temper.out/py as it is")
+    parser.add_argument("--require", action="store_true", help="fail when a shell isn't installed")
     parser.add_argument("shells", nargs="*", metavar="SHELL", help=", ".join(SHELLS))
     options = parser.parse_args()
     shells = options.shells or list(SHELLS)
@@ -234,18 +241,26 @@ def main():
         work = bin_dir / "work"
         work.mkdir()
         path = os.pathsep.join(str(OUT / name) for name in ("argmas", "temper-core", "std"))
-        frob = bin_dir / "frob"
-        frob.write_text(
-            "#!/bin/sh\n"
-            f"PYTHONPATH={shlex.quote(path)} exec {shlex.quote(sys.executable)} "
-            f"{shlex.quote(str(HERE / 'frob.py'))} \"$@\"\n"
-        )
-        frob.chmod(0o755)
+        if WINDOWS:
+            # write_text ends lines with CRLF there.
+            frob = bin_dir / "frob.cmd"
+            frob.write_text(f'@echo off\nset "PYTHONPATH={path}"\n"{sys.executable}" "{HERE / "frob.py"}" %*\n')
+        else:
+            frob = bin_dir / "frob"
+            frob.write_text(
+                "#!/bin/sh\n"
+                f"PYTHONPATH={shlex.quote(path)} exec {shlex.quote(sys.executable)} "
+                f"{shlex.quote(str(HERE / 'frob.py'))} \"$@\"\n"
+            )
+            frob.chmod(0o755)
         (work / "alpha.txt").write_text("")
         (work / "gamma.txt").write_text("")
         (work / "beta").mkdir()
         (bin_dir / "inputrc").write_text("set bell-style none\nset enable-bracketed-paste off\n")
+        # Windows programs need some of the system's variables, such as
+        # SystemRoot, so they're kept there.
         env = {
+            **(os.environ if WINDOWS else {}),
             "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
             "HOME": str(work),
             "XDG_CONFIG_HOME": str(work / ".config"),
@@ -257,6 +272,7 @@ def main():
             program = SHELLS[shell]
             if shutil.which(program) is None:
                 print(f"{shell}: skipped, {program} isn't installed")
+                failed = failed or options.require
                 continue
             script = subprocess.run(
                 [str(frob), "--completions", shell], env=env, capture_output=True, text=True, check=True
