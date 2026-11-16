@@ -16,14 +16,16 @@ fish, and powershell (pwsh); shells that aren't installed are skipped,
 and the report says which ran (with `--require`, as CI runs it, a
 missing shell fails instead). Each shell runs without the user's
 configuration, with HOME in the throwaway directory, so nothing outside
-it changes. On Windows, `frob` is a batch file, and only PowerShell
-runs.
+it changes, and in a directory of its own beside HOME, so the files a
+shell keeps there aren't offered. On Windows, `frob` is a batch file,
+and only PowerShell runs.
 
 bash and zsh are driven through a pseudo-terminal, as a user would:
 bash inserts every completion into the line (readline's
 insert-completions) and the line is printed, and zsh lists them
-(delete-char-or-list). fish uses `complete -C`, and PowerShell
-`TabExpansion2`. Exits non-zero on any difference.
+(delete-char-or-list), once its line editor is reading. fish uses
+`complete -C`, and PowerShell `TabExpansion2`. Exits non-zero on any
+difference.
 """
 
 import argparse
@@ -153,12 +155,17 @@ def drive_bash(work, env):
     return results
 
 
+# What zsh's line editor prints as it starts reading a line.
+ZLE_READY = "<ZLE-READY>"
+
+
 def drive_zsh(work, env):
     script = work.parent / "frob.zsh"
     shell = Pty(["zsh", "-f", "-i"], env, work)
     shell.send(
         "PROMPT='' RPROMPT=''; unsetopt beep; autoload -Uz compinit; compinit -u -d $HOME/.zcompdump; "
-        f"source {shlex.quote(str(script))}; zstyle ':completion:*' list-packed false; echo READY''\r"
+        f"source {shlex.quote(str(script))}; zstyle ':completion:*' list-packed false; "
+        "zle-line-init() { print -n '<ZLE''-READY>' }; zle -N zle-line-init; echo READY''\r"
     )
     shell.until("READY\r\n")
     results = []
@@ -167,6 +174,11 @@ def drive_zsh(work, env):
         exports = "".join(f"export {k}={v}; " for k, v in extra.items()) or "unset FROB_STYLE; "
         shell.send(f"{exports}echo BEGIN{n}''\r")
         shell.until(f"BEGIN{n}\r\n")
+        # Typed before the line editor reads, while the terminal still
+        # reads whole lines, Ctrl-D would be taken as end of input, so
+        # wait for it, and a moment more.
+        shell.until(ZLE_READY)
+        time.sleep(0.2)
         # List the completions, then clear the line.
         shell.send(line + "\x04")
         time.sleep(1.0)
@@ -174,10 +186,17 @@ def drive_zsh(work, env):
         text = ANSI.sub("", shell.until(f"END{n}\r\n"))
         found = []
         for row in text.replace("\r", "").split("\n"):
-            if not row.strip() or line.strip() in row or "echo END" in row:
+            if not row.strip() or line.strip() in row or "echo END" in row or ZLE_READY in row:
                 continue
             # `value  -- description` from _describe, or columns of values.
             found.extend(row.split(" -- ")[0].split())
+        # zsh lists paths without the part of the word the script keeps
+        # in front of them (`--out=` in `--out=g`), as it does for any
+        # command, though it completes the whole word.
+        word = "" if line.endswith(" ") else line.split()[-1]
+        kept = re.match(r"(.*?[=:])", word)
+        if kept:
+            found = [f if f.startswith(kept[1]) else kept[1] + f for f in found]
         results.append(found)
     shell.close()
     return results
@@ -235,11 +254,13 @@ def main():
 
     failed = False
     with tempfile.TemporaryDirectory(prefix="argmas-shells-") as tmp:
-        # Scripts and `frob` in tmp, and files to complete in tmp/work,
-        # which is also HOME.
+        # Scripts and `frob` in tmp, files to complete in tmp/work, and
+        # HOME in tmp/home, where shells keep their own files.
         bin_dir = Path(tmp)
         work = bin_dir / "work"
         work.mkdir()
+        home = bin_dir / "home"
+        home.mkdir()
         path = os.pathsep.join(str(OUT / name) for name in ("argmas", "temper-core", "std"))
         if WINDOWS:
             # write_text ends lines with CRLF there.
@@ -262,9 +283,9 @@ def main():
         env = {
             **(os.environ if WINDOWS else {}),
             "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
-            "HOME": str(work),
-            "XDG_CONFIG_HOME": str(work / ".config"),
-            "XDG_DATA_HOME": str(work / ".local" / "share"),
+            "HOME": str(home),
+            "XDG_CONFIG_HOME": str(home / ".config"),
+            "XDG_DATA_HOME": str(home / ".local" / "share"),
             "TERM": "dumb",
             "LANG": "C.UTF-8",
         }

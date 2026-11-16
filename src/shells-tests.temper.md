@@ -195,8 +195,9 @@ so a change to one shows in review. The scripts run in real shells in
         "    if ($directive -match '^:(files|directories)(?: (.*))?$') {
         "        $kind = $Matches[1]
         "        $prefix = "$($Matches[2])"
-        "        # With nothing else to offer, PowerShell completes paths itself.
-        "        if ($prefix -eq '' -and $results.Count -eq 0) { return }
+        "        # With nothing else to offer, PowerShell completes files itself,
+        "        # but directories only here.
+        "        if ($kind -eq 'files' -and $prefix -eq '' -and $results.Count -eq 0) { return }
         "        $part = $wordToComplete.Substring([Math]::Min($prefix.Length, $wordToComplete.Length))
         "        foreach ($path in [System.Management.Automation.CompletionCompleters]::CompleteFilename($part)) {
         "            if ($kind -eq 'directories' -and $path.ResultType -ne 'ProviderContainer') { continue }

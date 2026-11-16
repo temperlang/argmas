@@ -474,7 +474,9 @@ Decisions, each tested in `src/complete-tests.temper.md` and
   `COMP_WORDS` splits at `=` and `:`, and hands bash back only the
   part after the last of those it completes. PowerShell completes
   paths itself when a completer offers nothing, so values with no
-  candidates get paths there.
+  candidates get paths there; its script leaves files to that, but
+  completes directories itself, keeping only containers, since
+  PowerShell's own would offer files too.
 - **Printing scripts:** `cli.completionScript(shell)` with `Shell.bash`,
   `zsh`, `fish`, or `powershell`, and an opt-in built-in
   `--completions SHELL` (`completions: true` in `CommandSpec`), an

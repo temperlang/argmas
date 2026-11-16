@@ -259,7 +259,9 @@ mostly passes them on.
 
 A native argument completer, registered for the name with and without
 `.exe`. When it has nothing to offer, PowerShell completes paths, so
-a value with no candidates gets paths too.
+a value with no candidates gets paths too, and the script leaves
+files to it then; directories it completes itself, keeping only
+PowerShell's containers, since PowerShell would offer files too.
 
     let powerShellScript(header: String, quoted: String, quotedExe: String): String {
       """
@@ -297,8 +299,9 @@ a value with no candidates gets paths too.
         "    if ($directive -match '^:(files|directories)(?: (.*))?$') {
         "        $kind = $Matches[1]
         "        $prefix = "$($Matches[2])"
-        "        # With nothing else to offer, PowerShell completes paths itself.
-        "        if ($prefix -eq '' -and $results.Count -eq 0) { return }
+        "        # With nothing else to offer, PowerShell completes files itself,
+        "        # but directories only here.
+        "        if ($kind -eq 'files' -and $prefix -eq '' -and $results.Count -eq 0) { return }
         "        $part = $wordToComplete.Substring([Math]::Min($prefix.Length, $wordToComplete.Length))
         "        foreach ($path in [System.Management.Automation.CompletionCompleters]::CompleteFilename($part)) {
         "            if ($kind -eq 'directories' -and $path.ResultType -ne 'ProviderContainer') { continue }
