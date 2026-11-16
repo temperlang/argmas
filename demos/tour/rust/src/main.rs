@@ -43,6 +43,7 @@ fn main() -> ExitCode {
     // The command, declared once, with builders for Temper's property
     // bags. Each handle has its type: `level` gives an i32 and `files` a
     // list of strings.
+    // snippet: declare
     let cli = Command::new(
         CommandSpecBuilder { name: s("pack") }.options().about(s("Pack files into archives.")).version(s("1.0.0")).build(),
     );
@@ -90,7 +91,9 @@ fn main() -> ExitCode {
         strings(),
         PositionalSpecBuilder { name: s("ARCHIVE") }.options().help(s("The archive to list.")).build(),
     );
+    // end snippet
 
+    // snippet: results
     // Values to run with, text to print (help and version), or a mistake,
     // told apart with `temper_core::cast`.
     let argv: Vec<Arc<String>> = std::env::args().skip(1).map(Arc::new).collect();
@@ -113,4 +116,5 @@ fn main() -> ExitCode {
         eprint!("{}", error.text(None));
     }
     ExitCode::from(result.exit_status() as u8)
+    // end snippet
 }

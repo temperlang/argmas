@@ -26,6 +26,7 @@ public class Tour {
         // The command, declared once, with a builder for each of Temper's
         // property bags. Each handle has its type: `level` gives an Integer
         // and `files` a List<String>.
+        // snippet: declare
         var cli = new Command(new CommandSpec.Builder().name("pack").about("Pack files into archives.").version("1.0.0").build());
         // `short` is a keyword in Java, so its setter is `short_`.
         var verbose = cli.flag(new FlagSpec.Builder().name("verbose").short_("v").help("Say what's happening.").inherited(true).build());
@@ -38,7 +39,9 @@ public class Tour {
 
         var list = cli.subcommand(new SubcommandSpec.Builder().name("list").about("List an archive's files.").aliases(List.of("ls")).build());
         var listed = list.positional(strings, new PositionalSpec.Builder().name("ARCHIVE").help("The archive to list.").build());
+        // end snippet
 
+        // snippet: results
         // Values to run with, text to print (help and version), or a mistake.
         // Argmas reads environment variables through its one-method
         // Environment interface, here a lambda, so parsing touches nothing
@@ -62,5 +65,6 @@ public class Tour {
             System.err.print(error.text());
         }
         System.exit(result.getExitStatus());
+        // end snippet
     }
 }

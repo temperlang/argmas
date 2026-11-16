@@ -1,0 +1,789 @@
+/* Argmas's site. Colors are tokens, redefined for dark mode; the layout,
+   code, and tab styles follow Wherewith's, Hrefine's, and Chromarite's
+   sites. */
+
+:root {
+  --bg: #fafbfc;
+  --surface: #ffffff;
+  --text: #17202b;
+  --muted: #55606d;
+  --border: #dbe1e8;
+  --accent: #3d4fc4;
+  --accent-2: #0b7a72;
+  --code-bg: #f0f3f7;
+  --keyword: #8a2be2;
+  --string: #0f7a4a;
+  --number: #b0461a;
+  --comment: #5f6977;
+  --type: #1d5fa8;
+  /* Terminals: dark in both schemes, as terminals usually are. */
+  --term-bg: #151a21;
+  --term-text: #e3e8ee;
+  --term-muted: #93a0ae;
+  --term-prompt: #7fd4a4;
+  --term-err: #ff9d8f;
+  --term-ok: #7fd4a4;
+  --term-comp: #9aa8ff;
+  --term-border: #2c3440;
+  color-scheme: light dark;
+}
+
+/* Layout rules like `display: flex` would otherwise show hidden elements. */
+[hidden] {
+  display: none !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10141a;
+    --surface: #171c23;
+    --text: #e6ebf1;
+    --muted: #a0abb8;
+    --border: #2c3440;
+    --accent: #9aa8ff;
+    --accent-2: #5fd6c8;
+    --code-bg: #1c232c;
+    --keyword: #c9a0ff;
+    --string: #7fd4a4;
+    --number: #f0a274;
+    --comment: #8b97a5;
+    --type: #8cc4ff;
+    --term-bg: #0b0e12;
+    --term-border: #2c3440;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.wrap {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+a.quiet {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+code,
+pre,
+kbd,
+input {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+code {
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+}
+
+h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.9rem;
+}
+
+h3 {
+  margin: 1.75rem 0 0.5rem;
+  font-size: 1.25rem;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.skip {
+  position: absolute;
+  left: -999px;
+}
+
+.skip:focus {
+  left: 1rem;
+  top: 0.5rem;
+  z-index: 10;
+  background: var(--surface);
+  padding: 0.25rem 0.5rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The top bar. */
+
+.top {
+  background-color: var(--surface);
+  border-bottom: 1px solid var(--border);
+  /* A strip of the two accents along the top. */
+  background-image: linear-gradient(90deg, var(--accent), var(--accent-2));
+  background-size: 100% 5px;
+  background-repeat: no-repeat;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1.5rem;
+  padding-top: 0.9rem;
+  padding-bottom: 0.5rem;
+}
+
+.brand {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.brand a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.bar nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  font-size: 0.95rem;
+}
+
+/* The opening: pack's declaration in each language, and what it prints. */
+
+.opening {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 1rem 0 1.75rem;
+}
+
+.slogan {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.slogan strong {
+  color: var(--text);
+}
+
+.opening h1 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  letter-spacing: -0.015em;
+}
+
+.lead {
+  margin: 0 0 1.25rem;
+  max-width: 52rem;
+  color: var(--muted);
+}
+
+.punch {
+  margin: 1rem 0 0;
+  font-size: clamp(1.1rem, 2.6vw, 1.35rem);
+  font-weight: 650;
+}
+
+.label {
+  margin: 0 0 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.hero-grid .tabs {
+  margin-top: 0;
+}
+
+.hero-grid pre.source {
+  font-size: 0.8rem;
+}
+
+@media (max-width: 60rem) {
+  .hero-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Sections. */
+
+main > section {
+  padding: 2.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+main > section p {
+  max-width: 52rem;
+}
+
+.small-note {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.code-label,
+.output-label {
+  margin: 1rem 0 0.2rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Code tabs. */
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 1.25rem 0 0.4rem;
+}
+
+.tabs button {
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.3rem 0.8rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tabs button:hover {
+  border-color: var(--accent);
+}
+
+.tabs button[aria-selected="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface);
+}
+
+.run {
+  margin: 0.3rem 0 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+pre.source,
+pre.output {
+  margin: 0.4rem 0 0.5rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.5rem;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  overflow: auto;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+pre code {
+  font-size: inherit;
+  overflow-wrap: normal;
+}
+
+.tok-comment {
+  color: var(--comment);
+  font-style: italic;
+}
+
+.tok-string {
+  color: var(--string);
+}
+
+.tok-number {
+  color: var(--number);
+}
+
+.tok-keyword {
+  color: var(--keyword);
+}
+
+.tok-type {
+  color: var(--type);
+}
+
+/* Terminals: a command line, what it printed, standard error in red, and
+   the exit status. */
+
+pre.term {
+  margin: 0.4rem 0 0.75rem;
+  padding: 0.8rem 1rem;
+  border-radius: 0.5rem;
+  background: var(--term-bg);
+  color: var(--term-text);
+  border: 1px solid var(--term-border);
+  overflow: auto;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.term .cmd {
+  font-weight: 650;
+}
+
+.term .prompt {
+  color: var(--term-prompt);
+}
+
+.term .stderr {
+  color: var(--term-err);
+}
+
+.term .status {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0 0.45rem;
+  border-radius: 0.3rem;
+  border: 1px solid currentColor;
+  font-size: 0.75rem;
+}
+
+.term .status-ok {
+  color: var(--term-ok);
+}
+
+.term .status-err {
+  color: var(--term-err);
+}
+
+.term .runs-with {
+  color: var(--term-text);
+}
+
+.term .runs-label,
+.term .comp-note,
+.term .comp-desc {
+  color: var(--term-muted);
+  font-style: italic;
+}
+
+.term .comp {
+  color: var(--term-comp);
+}
+
+.term kbd {
+  margin-left: 0.3rem;
+  padding: 0 0.35rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--term-muted);
+  border-bottom-width: 2px;
+  color: var(--term-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+/* Try it. */
+
+.try-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin: 1rem 0 0.6rem;
+}
+
+.prompt-label {
+  display: flex;
+  align-items: center;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-weight: 700;
+  color: var(--accent-2);
+}
+
+.try-form input {
+  flex: 1 1 18rem;
+  min-width: 0;
+  font-size: 0.95rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.45rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+button.primary,
+button.secondary {
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.45rem 1.1rem;
+  border-radius: 0.45rem;
+  border: 1px solid var(--accent);
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+button.secondary {
+  background: var(--surface);
+  color: var(--accent);
+}
+
+button.primary:hover,
+button.secondary:hover {
+  filter: brightness(1.1);
+}
+
+.chips {
+  list-style: none;
+  margin: 0 0 0.6rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chip {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0.2rem 0.55rem;
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+}
+
+#try-output pre.term {
+  min-height: 6rem;
+}
+
+/* Styles: a card each. */
+
+.styles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.style-card {
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--accent);
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+
+.style-card h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1.1rem;
+}
+
+.style-card .looks {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.style-card .common {
+  color: var(--muted);
+}
+
+.style-card .output-label {
+  margin-top: 0.6rem;
+}
+
+.forms {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+}
+
+.style-card pre.term,
+.style-card pre.output {
+  font-size: 0.76rem;
+}
+
+pre.values {
+  margin-top: 0.2rem;
+}
+
+/* Subcommands: the runs, two across where they fit. */
+
+.runs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr));
+  gap: 0 0.9rem;
+  margin-top: 1rem;
+}
+
+.run-item {
+  min-width: 0;
+}
+
+/* Completions. */
+
+.space {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.term .space {
+  color: var(--term-muted);
+}
+
+/* Narrow: each answer a block, with labels beside its cells. */
+@media (max-width: 40rem) {
+  .answers thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .answers tr,
+  .answers th,
+  .answers td {
+    display: block;
+  }
+
+  .answers tr {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .answers th,
+  .answers td {
+    border: none;
+    padding: 0.1rem 0;
+  }
+
+  .answers code.call {
+    white-space: normal;
+  }
+
+  .answers td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+}
+
+.tab-step {
+  display: block;
+}
+
+.tab-step + .tab-step {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--term-border);
+}
+
+.term .cmd.done {
+  font-weight: 400;
+}
+
+/* Each step shows in turn, for those who don't mind motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .tabbing .tab-step {
+    animation: step-in 0.5s ease-out both;
+  }
+
+  .tabbing .tab-step:nth-child(2) {
+    animation-delay: 0.6s;
+  }
+
+  .tabbing .tab-step:nth-child(3) {
+    animation-delay: 1.2s;
+  }
+
+  .tabbing .tab-step:nth-child(4) {
+    animation-delay: 1.8s;
+  }
+
+  .tabbing .tab-step:nth-child(5) {
+    animation-delay: 2.4s;
+  }
+
+  @keyframes step-in {
+    from {
+      opacity: 0;
+      transform: translateY(0.3rem);
+    }
+  }
+}
+
+pre.answer {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.tabchar {
+  color: var(--muted);
+  padding: 0 0.3em;
+}
+
+code.call {
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+details.script {
+  margin: 0.4rem 0;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  background: var(--surface);
+}
+
+details.script summary {
+  cursor: pointer;
+}
+
+details.script pre {
+  max-height: 28rem;
+  font-size: 0.75rem;
+}
+
+/* Messages: English and the translation side by side. */
+
+.msg-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr));
+  gap: 0 1rem;
+}
+
+.msg-col {
+  min-width: 0;
+}
+
+/* Why the same behavior matters. */
+
+.reasons {
+  margin: 1.25rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  gap: 0.75rem;
+}
+
+.reasons li {
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--accent-2);
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+
+.reasons strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+/* Getting started. */
+
+.steps {
+  margin: 0.5rem 0 0;
+  padding-left: 1.4rem;
+}
+
+.steps li {
+  margin-bottom: 0.6rem;
+}
+
+pre.cmdline {
+  margin: 0.3rem 0;
+  padding: 0.5rem 0.8rem;
+}
+
+/* Tables. */
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.92rem;
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.4rem 0.75rem 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+thead th {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+tbody th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+footer {
+  padding: 1.5rem 0 2.5rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Errors wrap, as a terminal wraps long lines; help keeps its columns
+   and scrolls. */
+.term .stderr,
+.term .comp-note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+pre.tabbing {
+  max-width: 50rem;
+}

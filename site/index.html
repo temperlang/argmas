@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Argmas: command lines that behave the same in every language</title>
+  <meta name="description" content="Declare a command line once and get typed options, subcommands, help, clear errors with suggestions, and shell completions, with the same behavior in C++, C#, Java, JavaScript, Lua, Python, and Rust.">
+  <link rel="stylesheet" href="style.css">
+  <!-- Argmas and Temper's runtime, for running pack in the page. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "argmas": "./lib/argmas/index.js",
+        "@temperlang/core": "./lib/temper-core/index.js"
+      }
+    }
+  </script>
+  <script type="module" src="app.js"></script>
+  <!-- Without script, every language's code shows, one after another, and pack can't run here. -->
+  <noscript><style>.lang-panel[hidden] { display: block !important; } .tabs, .try-form, .chips { display: none !important; }</style></noscript>
+</head>
+<body>
+  <a class="skip" href="#try">Skip to trying it</a>
+  <header class="top">
+    <div class="wrap bar">
+      <p class="brand"><a href="#">Argmas</a></p>
+      <nav aria-label="Sections">
+        <a href="#try">Try it</a>
+        <a href="#styles">Styles</a>
+        <a href="#subcommands">Subcommands</a>
+        <a href="#completions">Completions</a>
+        <a href="#messages">Messages</a>
+        <a href="#errors">Errors</a>
+        <a href="#start">Get started</a>
+        <a href="https://github.com/temperlang/argmas">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="opening" aria-labelledby="title">
+    <div class="wrap">
+      <p class="slogan">
+        <strong>Muscle memory for AI.</strong>
+        <span>Solve it once in Temper, and every language remembers.</span>
+      </p>
+      <h1 id="title">One command line, the same in seven languages.</h1>
+      <p class="lead">
+        Declare a program&#8217;s options, arguments, and subcommands once,
+        and Argmas parses them, writes the help, explains mistakes, and
+        completes them in the shell, with the same behavior in C++, C#,
+        Java, JavaScript, Lua, Python, and Rust. A tool rewritten in
+        another language keeps its command line, down to the last error
+        message.
+      </p>
+      <div class="hero-grid">
+        <div class="hero-code">
+          <p class="label">The tour&#8217;s <code>pack</code>, declared in each language</p>
+<!--HERO_CODE-->
+        </div>
+        <div class="hero-out">
+          <p class="label">What every one of them prints</p>
+<!--HERO_RUNS-->
+        </div>
+      </div>
+      <p class="punch">Same help, same errors, same exit status, whichever language runs it.</p>
+    </div>
+  </section>
+
+  <main>
+    <section id="try" aria-labelledby="try-title">
+      <div class="wrap">
+        <h2 id="try-title">Try it</h2>
+        <p>
+          This runs <code>pack</code>, the tour&#8217;s JavaScript version,
+          right in this page, with Argmas built to JavaScript. Type a command
+          line, or pick one of the <!--CASE_COUNT--> that CI runs in every
+          language. <strong>Run</strong> parses it; <strong>Tab</strong>
+          asks for completions, as a shell would. Settings such as
+          <code>PACK_LEVEL=7</code> before <code>pack</code> are its
+          environment.
+        </p>
+        <form class="try-form" id="try-form" autocomplete="off">
+          <label for="try-line" class="prompt-label"><span aria-hidden="true">$</span><span class="visually-hidden">Command line</span></label>
+          <input id="try-line" name="line" type="text" spellcheck="false" autocapitalize="off" value="<!--TRY_LINE-->">
+          <button type="submit" class="primary">Run</button>
+          <button type="button" id="try-tab" class="secondary" title="Complete the last word, as Tab would in a shell">Tab</button>
+        </form>
+        <ul class="chips" aria-label="Command lines from the tour">
+<!--TRY_CHIPS-->
+        </ul>
+        <div id="try-output" aria-live="polite">
+<!--TRY_OUTPUT-->
+        </div>
+        <p class="small-note" id="try-note">
+          The output above was made when this page was built, by running the
+          same JavaScript in Node; pressing Run makes it again, here.
+        </p>
+      </div>
+    </section>
+
+    <section id="styles" aria-labelledby="styles-title">
+      <div class="wrap">
+        <h2 id="styles-title">Argument styles</h2>
+        <p>
+          Unix tools write <code>--verbose</code>, Go&#8217;s write
+          <code>-verbose</code>, and Windows tools write <code>/verbose</code>.
+          A command picks its style, and the same declaration parses, writes
+          help, and reports mistakes that way. Here is one
+          <code>frob</code> in all three:
+        </p>
+<!--STYLES_CODE-->
+<!--STYLES-->
+        <p class="small-note">
+          Windows names ignore case, as Windows tools do, and a tool moving
+          from one style to another can accept both with
+          <code>alsoStyle</code>. The
+          <a href="https://github.com/temperlang/argmas/blob/main/docs/design.md#argument-styles">design notes</a>
+          have every rule.
+        </p>
+      </div>
+    </section>
+
+    <section id="subcommands" aria-labelledby="subcommands-title">
+      <div class="wrap">
+        <h2 id="subcommands-title">Subcommands</h2>
+        <p>
+          Subcommands are commands of their own, with their own arguments,
+          help, and errors, as in <code>git add</code>. An option marked
+          <code>inherited</code> works before or after a subcommand&#8217;s
+          name. Other options of the parent go before it, and if one comes
+          after, the error says where it belongs instead of guessing at a
+          near miss.
+        </p>
+<!--SUBCOMMANDS_CODE-->
+        <div class="runs">
+<!--SUBCOMMANDS-->
+        </div>
+      </div>
+    </section>
+
+    <section id="completions" aria-labelledby="completions-title">
+      <div class="wrap">
+        <h2 id="completions-title">Shell completions</h2>
+        <p>
+          Pressing Tab in bash, zsh, fish, or PowerShell runs a short script
+          that asks the program itself what could come next. Argmas answers
+          from the same declaration it parses with, so completions always
+          match what the program accepts, values included, and never need
+          regenerating.
+        </p>
+<!--COMPLETIONS_CODE-->
+        <p class="output-label">Pressing Tab, in a shell that shows descriptions</p>
+<!--COMPLETIONS_DEMO-->
+        <h3>What the shells get</h3>
+        <p>
+          Each Tab runs <code>frob __complete</code> with the position of the
+          word being completed and the words so far. Argmas answers with one
+          candidate a line, each with a tab and its description, if it has
+          one, and last what else the shell should do, such as list files.
+        </p>
+<!--COMPLETIONS_ANSWERS-->
+        <h3>Installing</h3>
+        <p>
+          With <code>completions: true</code>, <code>frob --completions SHELL</code>
+          prints the script. Argmas only prints it; users save it where their
+          shell looks:
+        </p>
+<!--COMPLETIONS_INSTALL-->
+        <p class="small-note">
+          zsh, fish, and PowerShell show descriptions, and bash shows only
+          the candidates. Each script, as <code>frob</code> prints it:
+        </p>
+<!--COMPLETIONS_SCRIPTS-->
+      </div>
+    </section>
+
+    <section id="messages" aria-labelledby="messages-title">
+      <div class="wrap">
+        <h2 id="messages-title">Messages and translations</h2>
+        <p>
+          Everything Argmas writes itself, from <code>Usage:</code> to each
+          error and suggestion, comes from one table of messages, English
+          unless the program sets its own. Each message has a stable key
+          and named placeholders, so a translation can put them in its own
+          order, and a key left out stays English. The program&#8217;s own
+          text, such as its options&#8217; help, is the program&#8217;s to
+          translate.
+        </p>
+<!--MESSAGES_CODE-->
+<!--MESSAGES_COMPARE-->
+        <p class="output-label">A typo in a key is caught on the first run:</p>
+<!--MESSAGES_TYPO-->
+        <p class="small-note">
+          The <a href="https://github.com/temperlang/argmas/blob/main/docs/design.md#keys">design notes</a>
+          list every key with its English text. Argmas never guesses the
+          user&#8217;s language; the program picks a table, as the
+          <a href="https://github.com/temperlang/argmas#messages-and-translations">README</a> shows.
+        </p>
+      </div>
+    </section>
+
+    <section id="errors" aria-labelledby="errors-title">
+      <div class="wrap">
+        <h2 id="errors-title">Errors are values</h2>
+        <p>
+          Parsing never prints, exits, or throws. It returns one of three
+          values: <code>Args</code>, to run with; <code>Output</code>, help
+          or a version to print before exiting with status 0; or
+          <code>ArgError</code>, a mistake to print to standard error before
+          exiting with status 2. Nothing outside is touched: the program
+          passes the arguments and, for environment variables, an
+          <code>Environment</code>. That makes a command line easy to test,
+          and easy to embed in a program that isn&#8217;t a command-line tool.
+        </p>
+<!--RESULTS_CODE-->
+        <ul class="reasons">
+          <li>
+            <strong>One behavior to learn.</strong>
+            A team with tools in several languages gets one set of rules
+            for <code>--</code>, bundled flags, negative numbers, and
+            option values, instead of each library&#8217;s own.
+          </li>
+          <li>
+            <strong>One set of docs.</strong>
+            Help and errors read the same in every language, so
+            documentation, tutorials, and scripts written for one version
+            of a tool fit the others.
+          </li>
+          <li>
+            <strong>Tested once, in every language.</strong>
+            Argmas&#8217;s tests run on all seven, and CI checks that the
+            tour prints exactly the same in each, and that completions work
+            in real shells on Linux, macOS, and Windows.
+          </li>
+          <li>
+            <strong>Port without surprises.</strong>
+            Rewriting a tool in another language keeps its command line,
+            so nobody&#8217;s scripts break.
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="start" aria-labelledby="start-title">
+      <div class="wrap">
+        <h2 id="start-title">Get started</h2>
+        <p>
+          <strong>Argmas isn&#8217;t released yet.</strong> There are no
+          packages to install, and it&#8217;s built with Temper&#8217;s new
+          compiler, which isn&#8217;t released either. For now, build the
+          compiler from source at the commit Argmas&#8217;s CI pins (see
+          <a href="https://github.com/temperlang/argmas/blob/main/.github/workflows/test.yml">test.yml</a>),
+          then build Argmas for your language and depend on it by path, as
+          each tour does:
+        </p>
+<!--START-->
+        <p class="small-note">
+          <a href="https://github.com/temperlang/argmas/blob/main/docs/languages.md">docs/languages.md</a>
+          shows what the API looks like in each language, and what still
+          reads awkwardly there.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>
+        Argmas is open source, at
+        <a href="https://github.com/temperlang/argmas">github.com/temperlang/argmas</a>,
+        under <a href="https://github.com/temperlang/argmas/blob/main/LICENSE-APACHE">Apache-2.0</a>
+        or <a href="https://github.com/temperlang/argmas/blob/main/LICENSE-MIT">MIT</a>.
+        Read the <a href="https://github.com/temperlang/argmas/blob/main/docs/design.md">design notes</a>
+        for how each corner case is decided.
+      </p>
+      <p class="small-note">
+        Beta, as every Temper library is until Temper&#8217;s translations
+        reach 1.0, so the API may change. Made with
+        <a href="https://temperlang.dev/">Temper</a>.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

@@ -8,7 +8,9 @@ behavior in C++, C#, Java, JavaScript, Lua, Python, and Rust.
 **Status: early.** Options, flags, positional arguments, environment
 fallbacks, subcommands, argument styles, help, errors, shell
 completions, and a message table for translations work.
-See [docs/design.md](docs/design.md). It stays beta until Temper's
+See [docs/design.md](docs/design.md), and the
+[project site](https://temperlang.github.io/argmas/) to try it in the
+browser. It stays beta until Temper's
 translations reach 1.0, and the API may change.
 
 ## Example
@@ -235,6 +237,15 @@ directory and completes command lines in the real shells, skipping
 those not installed:
 
     uv run tests/shells/run.py [SHELL ...]
+
+The [site](https://temperlang.github.io/argmas/) is built from the
+tours and `site/examples.py`, running the JavaScript and Python
+libraries for everything Argmas prints on it (see `site/build.py`):
+
+    npm ci --prefix site
+    temper build -b js -b py
+    uv run site/build.py
+    python3 -m http.server --bind 127.0.0.1 -d site/build
 
 CI ([test.yml](.github/workflows/test.yml)) runs the tests on every
 backend, the tours, and the shells: bash, zsh, fish, and PowerShell on

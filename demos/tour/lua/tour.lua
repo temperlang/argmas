@@ -14,6 +14,7 @@ local temper = require("temper-core")
 -- The command, declared once. Lua has no named arguments, so each spec's
 -- settings go in order, as the Temper class declares them, with nil for
 -- those left out.
+-- snippet: declare
 local cli = Command(CommandSpec("pack", "Pack files into archives.", "1.0.0"))
 -- name, short, help, env, negatable, inherited
 local verbose = cli:flag(FlagSpec("verbose", "v", "Say what's happening.", nil, nil, true))
@@ -29,11 +30,13 @@ local files = add:positionals(strings, PositionalSpec("FILE", "Files to add.", 1
 -- name, about, aliases
 local list = cli:subcommand(SubcommandSpec("list", "List an archive's files.", { "ls" }))
 local listed = list:positional(strings, PositionalSpec("ARCHIVE", "The archive to list."))
+-- end snippet
 
 -- Argmas reads environment variables through a table with `get`, so
 -- parsing touches nothing outside on its own.
 local env = { get = function(_, name) return os.getenv(name) end }
 
+-- snippet: results
 -- Values to run with, text to print (help and version), or a mistake.
 local result = cli:parse({ ... }, env)
 if temper.instance_of(result, Args) then
@@ -56,3 +59,4 @@ elseif temper.instance_of(result, ArgError) then
   io.stderr:write(result:text())
 end
 os.exit(result.exitStatus)
+-- end snippet

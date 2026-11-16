@@ -13,6 +13,7 @@ import {
 
 // The command, declared once. Each argument's handle has its type: `level`
 // gives a number and `files` an array of strings.
+// snippet: declare
 const cli = new Command(CommandSpec.new({ name: "pack", about: "Pack files into archives.", version: "1.0.0" }));
 const verbose = cli.flag(FlagSpec.new({ name: "verbose", short: "v", help: "Say what's happening.", inherited: true }));
 
@@ -24,11 +25,13 @@ const files = add.positionals(strings, PositionalSpec.new({ name: "FILE", min: 1
 
 const list = cli.subcommand(SubcommandSpec.new({ name: "list", about: "List an archive's files.", aliases: ["ls"] }));
 const listed = list.positional(strings, PositionalSpec.new({ name: "ARCHIVE", help: "The archive to list." }));
+// end snippet
 
 // Argmas reads environment variables through an object with `get`, so
 // parsing touches nothing outside on its own.
 const env = { get: (name) => process.env[name] ?? null };
 
+// snippet: results
 // Values to run with, text to print (help and version), or a mistake.
 const result = cli.parse(process.argv.slice(2), env);
 if (result instanceof Args) {
@@ -49,3 +52,4 @@ if (result instanceof Args) {
   process.stderr.write(result.text());
 }
 process.exitCode = result.exitStatus;
+// end snippet

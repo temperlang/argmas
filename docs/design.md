@@ -750,7 +750,8 @@ the API, and the choice made for each:
 In this order, as agreed (2026-11-16):
 
 1. The message table (done).
-2. A project site, with the tours as its seed.
+2. A project site, with the tours as its seed (done: `site/`, published
+   from main; per-language tabs for the examples beyond the tour later).
 3. Testing against reference parsers: `getopt_long`, clap, and
    argparse.
 4. Small open items: flags that default to true, `Int64` values, the

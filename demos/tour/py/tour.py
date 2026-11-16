@@ -37,6 +37,7 @@ class OsEnvironment(Environment):
 def main():
     # The command, declared once. Each argument's handle has its type:
     # `level` gives an int and `files` a list of strings.
+    # snippet: declare
     cli = Command(CommandSpec(name="pack", about="Pack files into archives.", version="1.0.0"))
     verbose = cli.flag(FlagSpec(name="verbose", short="v", help_="Say what's happening.", inherited=True))
 
@@ -48,7 +49,9 @@ def main():
 
     list_ = cli.subcommand(SubcommandSpec(name="list", about="List an archive's files.", aliases=["ls"]))
     listed = list_.positional(strings, PositionalSpec(name="ARCHIVE", help_="The archive to list."))
+    # end snippet
 
+    # snippet: results
     # Values to run with, text to print (help and version), or a mistake.
     result = cli.parse(sys.argv[1:], OsEnvironment())
     match result:
@@ -68,6 +71,7 @@ def main():
         case ArgError():
             sys.stderr.write(result.text())
     sys.exit(result.exit_status)
+    # end snippet
 
 
 if __name__ == "__main__":

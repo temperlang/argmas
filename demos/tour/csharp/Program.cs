@@ -12,6 +12,7 @@ using static Argmas.ArgmasGlobal;
 // The command, declared once, with named arguments for Temper's property
 // bags. Each handle has its type: `level` gives an int and `files` a list
 // of strings.
+// snippet: declare
 var cli = new Command(new CommandSpec("pack", about: "Pack files into archives.", version: "1.0.0"));
 var verbose = cli.Flag(new FlagSpec("verbose", @short: "v", help: "Say what's happening.", inherited: true));
 
@@ -23,7 +24,9 @@ var files = add.Positionals(Strings, new PositionalSpec("FILE", min: 1, help: "F
 
 var list = cli.Subcommand(new SubcommandSpec("list", about: "List an archive's files.", aliases: new[] { "ls" }));
 var listed = list.Positional(Strings, new PositionalSpec("ARCHIVE", help: "The archive to list."));
+// end snippet
 
+// snippet: results
 // Values to run with, text to print (help and version), or a mistake.
 var result = cli.Parse(args, new OsEnvironment());
 switch (result)
@@ -53,6 +56,7 @@ switch (result)
         break;
 }
 return result.ExitStatus;
+// end snippet
 
 // The process's environment variables, which Argmas reads through this
 // interface, so parsing touches nothing outside on its own.

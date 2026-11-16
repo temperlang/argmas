@@ -45,6 +45,7 @@ int main(int argc, char ** argv) {
   // Temper class declares them, with nullptr for those left out. Each
   // handle has its type: `level` gives an int32_t and `files` a shared
   // vector of strings.
+  // snippet: declare
   auto cli = Command::make(CommandSpec::make("pack", "Pack files into archives.", "1.0.0"));
   // name, short, help, env, negatable, inherited
   auto verbose = cli->flag(FlagSpec::make("verbose", "v", "Say what's happening.", nullptr, nullptr, true));
@@ -60,7 +61,9 @@ int main(int argc, char ** argv) {
 
   auto list = cli->subcommand(SubcommandSpec::make("list", "List an archive's files.", std::make_shared<Strings>(Strings{"ls"})));
   auto listed = list->positional(argmas::strings(), PositionalSpec::make("ARCHIVE", "The archive to list."));
+  // end snippet
 
+  // snippet: results
   // Values to run with, text to print (help and version), or a mistake.
   auto result = cli->parse(std::make_shared<Strings>(argv + 1, argv + argc), std::make_shared<OsEnvironment>());
   if (auto args = std::dynamic_pointer_cast<Args>(result)) {
@@ -86,4 +89,5 @@ int main(int argc, char ** argv) {
     std::cerr << error->text().str();
   }
   return result->get_exitStatus();
+  // end snippet
 }
