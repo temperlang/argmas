@@ -105,7 +105,7 @@ when (args.command) {
 
 - `cli.command({ ... })` returns a `Command` with its own arguments,
   help, errors, and subcommands; `SubcommandSpec` has `name`, `about`,
-  `aliases`, and `commandOptional`.
+  `aliases`, `hiddenAliases`, `commandOptional`, and `version`.
 - Options and flags marked `inherited` are accepted by every
   subcommand below the command declaring them, before or after the
   subcommand's name, and help lists them under each.
@@ -209,7 +209,7 @@ Each corner case gets one decision, written down here, and a test
 Subcommands (`src/subcommand-tests.temper.md`):
 
 - **Selection:** the first positional argument that names a
-  subcommand, or one of its aliases, selects it; the arguments after
+  subcommand, or one of its aliases (hidden or not), selects it; the arguments after
   it are the subcommand's, which can select a subcommand of its own.
   Aliases give the same command, with its own name in `args.command`
   and in help.
@@ -219,6 +219,15 @@ Subcommands (`src/subcommand-tests.temper.md`):
   either way: an option's last value wins and a counted flag adds up
   across both places. Other options go before the subcommand's name,
   as in git, and a subcommand's options go after it.
+- **A parent's option after a subcommand's name:** an option a command
+  above declared without `inherited`, given after a subcommand's name,
+  is an unknown option whose message says where it goes instead of
+  suggesting a near miss: "unknown option --dir; --dir belongs to
+  frob, so give it before add", naming the subcommand right below the
+  command that declared it (`remote` in `frob remote add --dir x`) by
+  its own name, even when an alias was typed. Options of a subcommand
+  given before its name get no hint, since the subcommand isn't known
+  yet.
 - **A command with positional arguments and subcommands** gets its own
   positional arguments before the subcommand's name. A word that names
   a subcommand always selects it; after `--`, none does, so `--`
@@ -232,8 +241,15 @@ Subcommands (`src/subcommand-tests.temper.md`):
   `args.command` is the command itself, and the program does what it
   likes, such as running one of them by default. The usage line ends
   with `COMMAND`, or `[COMMAND]` when it's optional. There's no
-  declared default subcommand: parsing its options at the top would
-  make `frob --force` work but `frob --help` not list `--force`.
+  declared default subcommand, decided for now (2026-11-16):
+  parsing its options at the top would make `frob --force` work but
+  `frob --help` not list `--force`, and `commandOptional` covers
+  running one by default.
+- **Hidden aliases** (`hiddenAliases`, such as old names kept
+  working) select their subcommand and work after `help`, but help
+  doesn't list them and suggestions don't offer them, so they stay
+  out of sight; no two names or aliases, hidden or not, under one
+  command are the same.
 - **`help` subcommand:** a command with subcommands has a built-in
   `help`, unless the program declares a subcommand of that name;
   `frob help remote add` is `frob remote add --help`. The words after
@@ -245,8 +261,13 @@ Subcommands (`src/subcommand-tests.temper.md`):
   --help add` is `frob`'s), the last one when given more than once,
   and wins over errors as at the top: `frob bogus --help` gives
   `frob`'s help, which lists the commands.
-- **`--version`** is built in for the top command only, as in clap;
-  `frob add --version` is an unknown option.
+- **`--version`** is built in for the top command, and for a
+  subcommand only when its spec sets its own `version` (decided
+  2026-11-16); it isn't inherited, so `frob add --version` is an
+  unknown option unless `add` has a version, and then it prints
+  `frob add 2.0.0`, the command's path and its version. Like
+  `--help`, it's the version of the command it's given to:
+  `frob --version add` is `frob`'s.
 - **Error order:** argument errors in argument order, then a missing
   subcommand, then positional counts, then environment values, then
   missing required options, each of the last three from the top
@@ -262,30 +283,85 @@ Subcommands (`src/subcommand-tests.temper.md`):
 - **Parsing a subcommand** directly is parsing its path from the top
   command: `add.parse(argv)` is `cli.parse(["add", ...argv])`.
 - **Help:** a command with subcommands lists them under `Commands:`,
-  with each one's about text and `[aliases: ...]`, then `help`, before
+  with each one's about text and `[aliases: ...]` (not its hidden
+  ones), then `help`, before
   its arguments and options, all in one column. A subcommand's usage
   starts with its path (`Usage: frob add [OPTIONS] FILE...`), and its
   options list its own, then those inherited from its parent, then
   from further up.
 
-## Argument styles (planned, after subcommands)
+## Argument styles
 
-A `style` setting on `Command` chooses how options are written; the same
-spec drives parsing, help, and completions in each style:
+As built in the third slice, a `style` setting on `Command` chooses
+how options are written; the same spec drives parsing, help, and
+usage lines (and later completions) in each style:
 
 | Style | Looks like | Common in |
 |---|---|---|
-| `gnu` (default) | `-v`, `-abc`, `--verbose`, `--out=f` | most Unix tools |
-| `singleDash` | `-verbose`, `-out=f`, `-out f` | Go's `flag`, Java's tools |
-| `windows` | `/v`, `/out:f`, `/?` | Windows command-line tools |
+| `Style.gnu` (default) | `-v`, `-abc`, `--verbose`, `--out=f` | most Unix tools |
+| `Style.singleDash` | `-verbose`, `-out=f`, `-out f` | Go's `flag`, Java's tools |
+| `Style.windows` | `/v`, `/out:f`, `/out f`, `/?` | Windows command-line tools |
 
-- Bundling (`-abc`) exists only in `gnu`; `singleDash` treats `-abc` as
-  one long name.
-- `windows` also accepts `-` and `--` forms, as most current Windows tools
-  do, and `/?` asks for help.
-- A command may accept two styles at once, for a tool moving from one to
-  the other; help shows the first.
-- Not planned: `+x` to turn an option on, now rare.
+```temper
+let cli = new Command({ name: "frob", style: Style.windows });
+let verbose = cli.flag({ name: "verbose", short: "v" });
+// frob /v, frob /Verbose, frob -verbose, and frob --verbose all set it.
+
+let go = new Command({ name: "frob", style: Style.singleDash });
+// -level=5, -level 5, and --level 5 all give 5; -vq is one name.
+
+let moving = new Command({ name: "frob", alsoStyle: Style.singleDash });
+// gnu first, so help shows --verbose, but -verbose works too.
+```
+
+Decisions, each tested in `src/style-tests.temper.md`:
+
+- **Bundling** (`-abc`, `-ofile`) exists only in `gnu`. In
+  `singleDash`, `-abc` is one name, long or short, and `-ofile` is an
+  unknown option; `--name` is the same as `-name`, as in Go's `flag`.
+- **`windows`** takes `/name`, `/name:value`, `/name=value`, and
+  `/name value`: `:` as in MSBuild and csc, and a separate value as in
+  `taskkill /pid 42` and `schtasks /tn name`. The first `:` or `=` ends
+  the name, so `/out:C:\x` gives `C:\x`. `-name` and `--name` work
+  the same, as in most current Windows tools, and nothing is bundled.
+- **Case:** `windows` names ignore ASCII case (`/V`, `/VERBOSE`), as
+  Windows tools do; values and subcommands' names keep theirs.
+- **Help in `windows`:** `/?` and `-?`, and `/help` and `/h` (in any
+  case); help lists `/?, /help`, and errors end with
+  `Try 'frob /?' for more information.`
+- **`/word` in `windows`** is an option only when `word` (before any
+  `:` or `=`) is the name of one, `no-` and a negatable flag's name, or
+  a built-in; other words starting with `/` are positional arguments,
+  so `/usr/bin/x` passes as a path. In a command without positional
+  arguments they're unknown options, with suggestions, as is a parent's
+  option given after a subcommand's name, for its hint. After an
+  option, a `/word` that names no option is its value: `/out /tmp/x`.
+  A path that is also an option's name goes after `--`.
+- **Negation** is `no-` before the name in every style:
+  `--no-color`, `-no-color`, `/no-color`.
+- **Values that look like options:** as in `gnu`, a separate value
+  can't start with `-` (except `-` alone and numbers), nor, in
+  `windows`, be `/` and an option's name; the message shows the
+  attached form (`-level=-x`, `/level:-x`).
+- **Numbers** in `singleDash` and `windows` (`-5`, `-1.5`) are
+  options only when they name one; otherwise values.
+- **One namespace:** in `singleDash` and `windows`, long and short
+  names are read the same way, so one option's long name can't be
+  another's short name, and in `windows`, names differing only in case
+  clash; the spec reports either as declared twice (`-v declared
+  twice`). `gnu` allows both.
+- **Two styles:** `alsoStyle` adds a second style, for a tool moving
+  from one to the other. Each argument is read in the first style
+  where it names an option or built-in in full, then as a `gnu` bundle
+  of known short options (so `-level` with both `gnu` and `singleDash`
+  is `-level`, not `-l evel`), and otherwise in the first style that
+  takes it for an option at all, which reports the error.
+- **Messages** name a known option in the first style (`option -level
+  needs a value`, `missing required option /name`); an unknown option
+  is echoed as typed, with a suggestion using the prefix typed.
+- **Subcommands** take their top command's styles; `SubcommandSpec`
+  has no `style`.
+- **Not planned:** `+x` to turn an option on, now rare.
 
 ## Testing
 
@@ -357,16 +433,16 @@ the API, and the choice made for each:
 - **`global` is a keyword in Python**, where generated code would have
   `global_`, so the setting is `inherited`, picocli's word for it.
 - **Enums aren't translated well yet**, so kinds (`ErrorKind`,
-  `ParamKind`, `Source`) are classes with static instances and
-  `@auto("==")`.
+  `ParamKind`, `Source`, `Style`) are classes with static instances and
+  `@auto("==")`; such an instance works as a bag property's default
+  (`style: Style = Style.gnu`).
 
 ## Open questions
 
-- Subcommands: whether a declared default subcommand is worth having
-  beside `commandOptional`; whether aliases need hiding from help;
-  whether `--version` should reach subcommands; and a hint when a
-  parent's option comes after a subcommand's name ("give --dir before
-  add").
+- Completions in each style: `windows` completions for PowerShell
+  and `cmd`, and whether completing a `/` word should offer paths too.
+- A declared default subcommand, decided against for now; revisit if
+  `commandOptional` proves awkward.
 - A flag that defaults to true, for `--no-color` style flags: today a
   flag is false unless given or set by its environment variable.
 - Options taking `Int64` values.

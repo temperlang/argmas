@@ -9,7 +9,7 @@ test here.
 
 `Tree` is a small version-control tool: `-v` is inherited by every
 subcommand, `-C` isn't, `remote` has subcommands of its own, and
-`rm` has aliases. `run` shows a result as text: the path of the
+`rm` has aliases, one of them hidden. `run` shows a result as text: the path of the
 command that ran, then each argument that was given, as `name=value`,
 or which command's help, or an error's kind and message.
 
@@ -39,7 +39,7 @@ or which command's help, or an error's kind and message.
         this.add = add;
         force = add.flag({ name: "force", short: "f", help: "Add ignored files too." });
         addFiles = add.positionals(strings, { name: "FILE", min: 1, help: "Files to add." });
-        let rm = cli.command({ name: "rm", about: "Remove files.", aliases: ["remove", "del"] });
+        let rm = cli.command({ name: "rm", about: "Remove files.", aliases: ["remove", "del"], hiddenAliases: ["erase"] });
         this.rm = rm;
         cached = rm.flag({ name: "cached", help: "Keep the file itself." });
         rmFile = rm.positional(strings, { name: "FILE", help: "The file to remove." });
@@ -107,6 +107,19 @@ Aliases select the same subcommand, which keeps its own name.
       assert(t.run(["remote", "ls"]) == "frob remote list:");
     }
 
+Hidden aliases select their subcommand too, and `help` takes them,
+but help doesn't list them (see the goldens below) and suggestions
+don't offer them.
+
+    test("hidden aliases") {
+      let t = new Tree();
+      assert(t.run(["erase", "a.txt"]) == "frob rm: file=a.txt");
+      assert(t.run(["help", "erase"]) == "help for frob rm");
+      assert(t.run(["erasr", "a.txt"]) == "unknownCommand: unknown command 'erasr'");
+      assert(commas(t.rm.hiddenAliases) == "erase");
+      assert(commas(t.rm.aliases) == "remove,del");
+    }
+
 A program matches `args.command` against the commands it declared.
 
     test("matching the command that ran") {
@@ -145,15 +158,22 @@ either way: a counted flag adds up across both places.
       assert(t.run(["-v", "remote", "-v", "ls", "-v"]) == "frob remote list: verbose=3");
     }
 
-Options that aren't inherited go before the subcommand's name.
+Options that aren't inherited go before the subcommand's name, and
+the error for one given after it says so, naming the subcommand right
+below the command that declared it.
 
     test("options that aren't inherited") {
       let t = new Tree();
       assert(t.run(["-C", "src", "add", "a"]) == "frob add: dir=src files=a");
-      assert(t.run(["add", "-C", "src", "a"]) == "unknownOption: unknown option -C");
-      assert(t.run(["add", "--dir=src", "a"]) == "unknownOption: unknown option --dir");
+      assert(t.run(["add", "-C", "src", "a"]) == "unknownOption: unknown option -C; -C belongs to frob, so give it before add");
+      assert(t.run(["add", "--dir=src", "a"]) == "unknownOption: unknown option --dir; --dir belongs to frob, so give it before add");
+      assert(t.run(["add", "-fC", "src"]) == "unknownOption: unknown option -C in -fC; -C belongs to frob, so give it before add");
+      assert(t.run(["remote", "add", "--dir", "x"]) == "unknownOption: unknown option --dir; --dir belongs to frob, so give it before remote");
+      assert(t.run(["del", "--dir", "x"]) == "unknownOption: unknown option --dir; --dir belongs to frob, so give it before rm");
       // A subcommand's options aren't its parent's.
       assert(t.run(["-f", "add", "a"]) == "unknownOption: unknown option -f");
+      // Near misses still get suggestions.
+      assert(t.run(["add", "--forse"]) == "unknownOption: unknown option --forse; did you mean --force?");
     }
 
 An inherited option of a subcommand reaches its subcommands, but not
@@ -320,12 +340,49 @@ built in.
       assert(!cli.builtInHelpCommand);
     }
 
-`--version` belongs to the top command only.
+`--version` belongs to the top command, and to subcommands that
+declare a version of their own; it isn't inherited.
 
     test("version at the top only") {
       let t = new Tree();
       assert(t.run(["--version"]) == "version");
       assert(t.run(["add", "--version"]) == "unknownOption: unknown option --version");
+      assert(t.run(["--version", "add", "a"]) == "version");
+    }
+
+    test("subcommand versions") {
+      let cli = new Command({ name: "tool", version: "1.0.0" });
+      let plugin = cli.command({ name: "plugin", about: "A plugin.", version: "0.3.0" });
+      plugin.command({ name: "inner" });
+      let version(argv: List<String>): String {
+        let r = cli.parse(argv);
+        when (r) {
+          is Output -> r.text();
+          else -> outcome(r);
+        }
+      }
+      assert(version(["--version"]) == "tool 1.0.0\n");
+      assert(version(["plugin", "--version"]) == "tool plugin 0.3.0\n");
+      assert(version(["--version", "plugin"]) == "tool 1.0.0\n");
+      assert(version(["plugin", "inner", "--version"]) == "unknownOption: unknown option --version");
+      assert(plugin.help() == """
+        "A plugin.
+        "
+        "Usage: tool plugin [OPTIONS] COMMAND
+        "
+        "Commands:
+        "  inner
+        "  help           Show help for a command.
+        "
+        "Options:
+        "  -h, --help     Show this help and exit.
+        "      --version  Show the version and exit.
+      );
+      // A subcommand may have a version when the top command has none.
+      let bare = new Command({ name: "bare" });
+      bare.command({ name: "s", version: "2.0.0" });
+      assert(outcome(bare.parse(["s", "--version"])) == "version");
+      assert(outcome(bare.parse(["--version"])) == "unknownOption: unknown option --version");
     }
 
 ## Errors
@@ -383,6 +440,10 @@ where they are.
       b.command({ name: "x", aliases: ["y"] });
       b.command({ name: "y" });
       assert(outcome(b.parse([])) == "invalidSpec: invalid command spec: command y declared twice");
+      let hidden = new Command({ name: "h" });
+      hidden.command({ name: "x", hiddenAliases: ["y"] });
+      hidden.command({ name: "y" });
+      assert(outcome(hidden.parse([])) == "invalidSpec: invalid command spec: command y declared twice");
       let c = new Command({ name: "c" });
       c.command({ name: "-x" });
       assert(outcome(c.parse([])) == "invalidSpec: invalid command spec: invalid command name '-x'");

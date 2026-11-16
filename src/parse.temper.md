@@ -121,11 +121,14 @@ Whether it's the help (true) or the version (false).
 
 The text to print to standard output, wrapped to `width` columns.
 
+A version is the command's path and its version: `frob 1.2.0`, or
+`frob add 2.0.0` for a subcommand with its own.
+
       public text(width: Int = 80): String {
         if (isHelp) {
           command.help(width)
         } else {
-          "${command.spec.name} ${command.spec.version ?? ""}\n"
+          "${command.path} ${command.spec.version ?? ""}\n"
         }
       }
     }
@@ -149,7 +152,8 @@ more.
 
       public text(width: Int = 80): String {
         let name = command.top.spec.name;
-        let more = if (command.builtInHelpLong) { "Try '${command.path} --help' for more information.\n" } else { "" };
+        let ask = helpOption(command);
+        let more = if (ask != null) { "Try '${command.path} ${ask}' for more information.\n" } else { "" };
         "${name}: ${message}\n${command.usage(width)}${more}"
       }
 
@@ -229,6 +233,13 @@ subcommand, then positional counts, then values from the environment,
 then missing required options, each of the last three from the top
 command down.
 
+### Styles
+
+In `singleDash` and `windows` [styles](style.temper.md), an option is
+one name after its prefix, with any value after `=` (or, in `windows`,
+`:`), and nothing is bundled. With two styles, each argument is read
+in the first that knows its name.
+
 ### Subcommands
 
 In a command with subcommands, a positional argument that names one
@@ -288,7 +299,10 @@ One level for the top command, and one more for each subcommand named.
 The command whose help was asked for, if any.
 
       private var helpFor: Command? = null;
-      private var wantsVersion: Boolean = false;
+
+The command whose version was asked for, if any.
+
+      private var versionFor: Command? = null;
 
       private get current(): Level { levels[levels.length - 1] }
 
@@ -303,17 +317,23 @@ The command whose help was asked for, if any.
             current.positionalTexts.add(arg);
           } else if (arg == "--") {
             onlyPositionals = true;
-          } else if (startsWith(arg, "--")) {
-            i = long(arg, i);
-          } else if (startsWith(arg, "-") && arg != "-" && !(current.numbersAreValues && looksLikeNumber(arg))) {
-            i = shorts(arg, i);
           } else {
-            i = word(arg, i);
+            let style = readAs(current, arg, false);
+            if (style == null) {
+              i = word(arg, i);
+            } else if (style != Style.gnu) {
+              i = named(arg, style, i);
+            } else if (startsWith(arg, "--")) {
+              i = long(arg, i);
+            } else {
+              i = shorts(arg, i);
+            }
           }
         }
         let help = helpFor;
         if (help != null) { return new Output(help, true); }
-        if (wantsVersion) { return new Output(top, false); }
+        let version = versionFor;
+        if (version != null) { return new Output(version, false); }
         let early = firstError;
         if (early != null) { return early; }
         let last = current.command;
@@ -366,14 +386,14 @@ of the next argument to read.
       }
 
 After `help`, every argument names a subcommand of the one before, and
-the help is the last one's. `-h`, `--help`, and `help` itself are
-skipped, so `frob help --help` is `frob`'s help too.
+the help is the last one's. `-h`, `--help` (or `/?` and the like in
+other styles), and `help` itself are skipped, so `frob help --help` is `frob`'s help too.
 
       private helpPath(command: Command, next: Int): Int {
         var target = command;
         for (var i = next; i < argv.length; i += 1) {
           let name = argv[i];
-          if (name == "-h" || name == "--help" || (name == "help" && target.builtInHelpCommand)) { continue; }
+          if (asksForHelp(target, name) || (name == "help" && target.builtInHelpCommand)) { continue; }
           let sub = target.findCommand(name);
           if (sub == null) {
             fail(target, ErrorKind.unknownCommand, "unknown command '${name}'${suggestCommand(target, name)}");
@@ -432,10 +452,11 @@ a value it took.
         }
         if (name == "version" && command.builtInVersion) {
           if (inline != null) { fail(command, ErrorKind.unexpectedValue, "option --version takes no value"); }
-          wantsVersion = true;
+          versionFor = command;
           return next;
         }
-        fail(command, ErrorKind.unknownOption, "unknown option --${name}${suggestLong(command, name)}");
+        let hint = belongsHint(command, name, Style.gnu, false, "--${name}");
+        fail(command, ErrorKind.unknownOption, "unknown option --${name}${hint ?? suggestLong(command, name)}");
         next
       }
 
@@ -478,7 +499,8 @@ a value it took.
             helpFor = command;
           } else {
             let within = if (arg.hasAtLeast(String.begin, arg.end, 3)) { " in ${arg}" } else { "" };
-            fail(command, ErrorKind.unknownOption, "unknown option -${c}${within}${suggestFromShort(command, arg)}");
+            let hint = belongsHint(command, c, Style.gnu, true, "-${c}");
+            fail(command, ErrorKind.unknownOption, "unknown option -${c}${within}${hint ?? suggestFromShort(command, arg)}");
             return next;
           }
           i = after;
@@ -486,23 +508,199 @@ a value it took.
         next
       }
 
+### Options in `singleDash` and `windows`
+
+One name after `-`, `--`, or (in `windows`) `/`, with an attached
+value after `=` or (in `windows`) `:`.
+
+      private named(arg: String, style: Style, next: Int): Int {
+        let command = current.command;
+        let parts = splitNamed(arg, style) ?? panic();
+        let name = parts.name;
+        let typed = "${parts.prefix}${name}";
+        let inline = parts.inline;
+        let ic = style.ignoresCase;
+        let p = command.find(name, style, false);
+        if (p != null) {
+          return takeNamed(p, typed, inline, false, next);
+        }
+        if (startsWith(asciiLowerIf(name, ic), "no-")) {
+          let negated = command.find(dropFirst(name, 3), style, false);
+          if (negated != null && negated.negatable) {
+            return takeNamed(negated, typed, inline, true, next);
+          }
+          if (negated != null) {
+            fail(command, ErrorKind.unknownOption, "unknown option ${typed}; ${parts.prefix}${negated.name} can't be negated");
+            return next;
+          }
+        }
+        let help = (sameName(name, "help", ic) && command.builtInHelpLong) ||
+          (sameName(name, "h", ic) && command.builtInHelpShort) ||
+          (name == "?" && style == Style.windows && command.builtInHelpQuestion);
+        if (help) {
+          if (inline != null) { fail(command, ErrorKind.unexpectedValue, "option ${typed} takes no value"); }
+          helpFor = command;
+          return next;
+        }
+        if (sameName(name, "version", ic) && command.builtInVersion) {
+          if (inline != null) { fail(command, ErrorKind.unexpectedValue, "option ${typed} takes no value"); }
+          versionFor = command;
+          return next;
+        }
+        let hint = belongsHint(command, name, style, false, typed);
+        var suggestion = "";
+        let best = nearest(name, longNames(command));
+        if (best != null) { suggestion = "; did you mean ${parts.prefix}${best}?"; }
+        fail(command, ErrorKind.unknownOption, "unknown option ${typed}${hint ?? suggestion}");
+        next
+      }
+
+      private takeNamed(p: Param, typed: String, inline: String?, negated: Boolean, next: Int): Int {
+        if (p.kind != ParamKind.option) {
+          if (inline != null) {
+            fail(current.command, ErrorKind.unexpectedValue, "option ${typed} takes no value");
+          } else {
+            occur(p, negated);
+          }
+          return next;
+        }
+        if (inline != null) {
+          give(p, inline);
+          return next;
+        }
+        takeNext(p, next)
+      }
+
+### Options given after a subcommand's name
+
+An option a command above declared, but didn't make `inherited`, given
+after a subcommand's name gets a hint instead of a suggestion: "unknown
+option --dir; --dir belongs to frob, so give it before add".
+
+      private belongsHint(command: Command, name: String, style: Style, asShort: Boolean, typed: String): String? {
+        var below = command;
+        for (let ancestor of command.ancestors) {
+          if (findIn(ancestor.declared, name, style, asShort) != null) {
+            return "; ${typed} belongs to ${ancestor.path}, so give it before ${below.spec.name}";
+          }
+          below = ancestor;
+        }
+        null
+      }
+
 ### Values
 
 An option's value from the next argument, if there's one that doesn't
-look like an option.
+look like an option. The message names the option in the command's
+first style.
 
       private takeNext(p: Param, next: Int): Int {
+        let command = current.command;
+        let shown = longForm(command.style, p);
         if (next < argv.length) {
           let candidate = argv[next];
-          if (!startsWith(candidate, "-") || candidate == "-" || (current.numbersAreValues && looksLikeNumber(candidate))) {
+          if (candidate != "--" && readAs(current, candidate, true) == null) {
             give(p, candidate);
             return next + 1;
           }
-          fail(current.command, ErrorKind.missingValue, "option --${p.name} needs a value; to give one starting with '-', write --${p.name}=${candidate}");
+          let attached = "${shown}${command.style.joiner}${candidate}";
+          let lead = if (startsWith(candidate, "/")) { "/" } else { "-" };
+          fail(command, ErrorKind.missingValue, "option ${shown} needs a value; to give one starting with '${lead}', write ${attached}");
           return next;
         }
-        fail(current.command, ErrorKind.missingValue, "option --${p.name} needs a value");
+        fail(command, ErrorKind.missingValue, "option ${shown} needs a value");
         next
+      }
+
+### Choosing a style
+
+The style an argument is read in, or null when it's a word (a
+positional argument or a subcommand's name): the first of the
+command's styles in which it names an option or a built-in in full,
+then the first in which it's a `gnu` bundle of known short options (so
+with `gnu` and `singleDash`, `-level` is `-level`, not `-l evel`), or
+else the first in which it's shaped like an option at all, to report
+it there. A value after an option (`forValue`) isn't read as an
+unknown `/word`, so `/out /tmp/x` gives `/tmp/x` to `/out`.
+
+      private readAs(level: Level, arg: String, forValue: Boolean): Style? {
+        let command = level.command;
+        let styles = command.styles;
+        for (let style of styles) {
+          if (knows(level, style, arg, false)) { return style; }
+        }
+        for (let style of styles) {
+          if (knows(level, style, arg, true)) { return style; }
+        }
+        for (let style of styles) {
+          if (shapedAsOption(level, style, arg, forValue)) { return style; }
+        }
+        null
+      }
+
+Whether `arg` names a known option, or a built-in, in `style`; for a
+`gnu` argument with one dash, whether it's a bundle of known short
+options, when `bundles`.
+
+      private knows(level: Level, style: Style, arg: String, bundles: Boolean): Boolean {
+        let command = level.command;
+        if (style == Style.gnu) {
+          if (!startsWith(arg, "-") || arg == "-" || (level.numbersAreValues && looksLikeNumber(arg))) { return false; }
+          if (startsWith(arg, "--")) {
+            let body = dropFirst(arg, 2);
+            let eq = body.indexOf("=");
+            let name = if (eq is StringIndex) { body.slice(String.begin, eq) } else { body };
+            return !bundles && knownName(command, name, style, false);
+          }
+          if (!bundles) { return false; }
+          var i = arg.next(String.begin);
+          while (arg.hasIndex(i)) {
+            let after = arg.next(i);
+            let c = arg.slice(i, after);
+            let p = command.find(c, style, true);
+            if (p != null && p.kind == ParamKind.option) { return true; }
+            if (p == null && !(c == "h" && command.builtInHelpShort)) { return false; }
+            i = after;
+          }
+          return true;
+        }
+        let named = splitNamed(arg, style);
+        if (bundles || named == null) { return false; }
+        knownName(command, named.name, style, false)
+      }
+
+Whether `name` (after the prefix, before any value) is an option, a
+negated flag, or a built-in in `style`. A `no-` name of an option that
+isn't negatable counts, for its error.
+
+      private knownName(command: Command, name: String, style: Style, asShort: Boolean): Boolean {
+        if (command.find(name, style, asShort) != null) { return true; }
+        let ic = style.ignoresCase;
+        if (startsWith(asciiLowerIf(name, ic), "no-") && command.find(dropFirst(name, 3), style, false) != null) { return true; }
+        if (sameName(name, "help", ic) && command.builtInHelpLong) { return true; }
+        if (sameName(name, "version", ic) && command.builtInVersion) { return true; }
+        if (style.oneNamespace && sameName(name, "h", ic) && command.builtInHelpShort) { return true; }
+        name == "?" && style == Style.windows && command.builtInHelpQuestion
+      }
+
+Whether `arg` has the shape of an option in `style`, known or not.
+
+      private shapedAsOption(level: Level, style: Style, arg: String, forValue: Boolean): Boolean {
+        if (startsWith(arg, "-")) {
+          if (arg == "-") { return false; }
+          if (style == Style.gnu) { return !(level.numbersAreValues && looksLikeNumber(arg)); }
+          return !looksLikeNumber(arg);
+        }
+        if (style == Style.windows && startsWith(arg, "/") && arg != "/") {
+          if (forValue) { return false; }
+          if (!level.command.takesPositionals) { return true; }
+          // An option of a command above, given too late, for its hint.
+          let named = splitNamed(arg, style) ?? panic();
+          for (let ancestor of level.command.ancestors) {
+            if (findIn(ancestor.declared, named.name, style, false) != null) { return true; }
+          }
+        }
+        false
       }
 
 An argument's values are kept with the command that declared it, so an
@@ -611,14 +809,14 @@ that is set and not empty.
           if (p.kind == ParamKind.flag) {
             let b = parseBoolean(text) orelse null;
             if (b == null) {
-              fail(command, ErrorKind.invalidValue, "invalid value '${text}' for --${p.name} from ${name}: expected ${booleanExpected}");
+              fail(command, ErrorKind.invalidValue, "invalid value '${text}' for ${longForm(command.style, p)} from ${name}: expected ${booleanExpected}");
               continue;
             }
             level.values[p.index].add(if (b) { "true" } else { "false" });
           } else if (p.kind == ParamKind.count) {
             let n = ints.parse(text) orelse -1;
             if (n < 0) {
-              fail(command, ErrorKind.invalidValue, "invalid value '${text}' for --${p.name} from ${name}: expected a count");
+              fail(command, ErrorKind.invalidValue, "invalid value '${text}' for ${longForm(command.style, p)} from ${name}: expected a count");
               continue;
             }
             level.values[p.index].add(n.toString());
@@ -637,7 +835,7 @@ that is set and not empty.
         for (let p of level.command.declared) {
           if (p.kind == ParamKind.option && p.required && level.values[p.index].length == 0) {
             let orEnv = if (p.env != null) { " (or ${p.env})" } else { "" };
-            fail(level.command, ErrorKind.missingRequired, "missing required option --${p.name}${orEnv}");
+            fail(level.command, ErrorKind.missingRequired, "missing required option ${longForm(level.command.style, p)}${orEnv}");
           }
         }
       }
@@ -682,6 +880,46 @@ so instead.
       }
     }
 
+How messages and help write an option's long name in `style`:
+`--level`, `-level`, or `/level`.
+
+    let longForm(style: Style, p: Param): String { "${style.prefix}${p.name}" }
+
+    let asciiLowerIf(text: String, lower: Boolean): String {
+      if (lower) { asciiLower(text) } else { text }
+    }
+
+Whether `arg` asks for the command's help, in any of its styles: `-h`,
+`--help`, `-help`, `/?`, and so on.
+
+    let asksForHelp(command: Command, arg: String): Boolean {
+      for (let style of command.styles) {
+        if (style == Style.gnu) {
+          if (arg == "--help" && command.builtInHelpLong) { return true; }
+          if (arg == "-h" && command.builtInHelpShort) { return true; }
+        } else {
+          let named = splitNamed(arg, style);
+          if (named != null && named.inline == null) {
+            let ic = style.ignoresCase;
+            if (sameName(named.name, "help", ic) && command.builtInHelpLong) { return true; }
+            if (sameName(named.name, "h", ic) && command.builtInHelpShort) { return true; }
+            if (named.name == "?" && style == Style.windows && command.builtInHelpQuestion) { return true; }
+          }
+        }
+      }
+      false
+    }
+
+The option that asks for help, as the error report suggests it, in the
+command's first style, or null when the program took help's names.
+
+    let helpOption(command: Command): String? {
+      let style = command.style;
+      if (style == Style.windows && command.builtInHelpQuestion) { return "/?"; }
+      if (command.builtInHelpLong) { return "${style.prefix}help"; }
+      null
+    }
+
     let firstLevel(top: Command): ListBuilder<Level> {
       let out = new ListBuilder<Level>();
       out.add(new Level(top));
@@ -689,7 +927,7 @@ so instead.
     }
 
     let invalidMessage(p: Param, text: String, envName: String?): String {
-      let what = if (p.kind == ParamKind.positional) { p.name } else { "--${p.name}" };
+      let what = if (p.kind == ParamKind.positional) { p.name } else { longForm(p.command.style, p) };
       let from = if (envName != null) { " from ${envName}" } else { "" };
       let near = nearest(text, p.choices);
       let suggestion = if (near != null) { "; did you mean ${near}?" } else { "" };

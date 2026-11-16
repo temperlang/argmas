@@ -38,7 +38,11 @@ Options:
   out).
 - A subcommand's usage line starts with its path (`frob add`), and its
   options include those its parents declared `inherited`, after its
-  own.
+  own. Hidden aliases aren't listed.
+- Option names are written in the command's first
+  [style](style.temper.md): `--level <LEVEL>`, `-level <LEVEL>`, or
+  `/level:<LEVEL>`, and help is `-h, --help`, `-h, -help`, or
+  `/?, /help`.
 
 The help puts these together.
 
@@ -69,22 +73,29 @@ The help puts these together.
           arguments.add(new HelpItem("  ${positionalForm(p, false)}", p.help, []));
         }
       }
+      let style = command.style;
       let options = new ListBuilder<HelpItem>();
       for (let p of command.options) {
-        options.add(new HelpItem(optionLeft(p), p.help, annotations(p)));
+        options.add(new HelpItem(optionLeft(p, style), p.help, annotations(p)));
       }
-      if (command.builtInHelpLong || command.builtInHelpShort) {
-        let left = if (command.builtInHelpShort && command.builtInHelpLong) {
-          "  -h, --help"
-        } else if (command.builtInHelpLong) {
-          "      --help"
+      let helpShort = if (style == Style.windows && command.builtInHelpQuestion) {
+        "?"
+      } else if (command.builtInHelpShort) {
+        "h"
+      } else {
+        null
+      };
+      if (command.builtInHelpLong || helpShort != null) {
+        let shortPart = if (helpShort != null) { "  ${style.shortPrefix}${helpShort}" } else { "    " };
+        let left = if (command.builtInHelpLong) {
+          "${shortPart}${if (helpShort != null) { ", " } else { "  " }}${style.prefix}help"
         } else {
-          "  -h"
+          shortPart
         };
         options.add(new HelpItem(left, "Show this help and exit.", []));
       }
       if (command.builtInVersion) {
-        options.add(new HelpItem("      --version", "Show the version and exit.", []));
+        options.add(new HelpItem("      ${style.prefix}version", "Show the version and exit.", []));
       }
 
       var longest = 0;
@@ -147,9 +158,10 @@ one line.
         if (!p.required) { anyOptional = true; }
       }
       if (anyOptional) { units.add("[OPTIONS]"); }
+      let style = command.style;
       for (let p of command.options) {
         if (p.kind == ParamKind.option && p.required) {
-          units.add("--${p.name} <${p.valueName}>");
+          units.add("${style.prefix}${p.name}${valueForm(p, style)}");
         }
       }
       for (let p of command.declared) {
@@ -189,12 +201,25 @@ line, `[FILE]` or `[FILE]...` when it may be left out.
 
 ## Options
 
-    let optionLeft(p: Param): String {
+An option's names in `style`: `-l, --level <LEVEL>` in `gnu`,
+`-l, -level <LEVEL>` in `singleDash`, and `/l, /level:<LEVEL>` in
+`windows`.
+
+    let optionLeft(p: Param, style: Style): String {
       let s = p.short;
-      let shortPart = if (s != null) { "  -${s}, " } else { "      " };
+      let shortPart = if (s != null) { "  ${style.shortPrefix}${s}, " } else { "      " };
       let negation = if (p.negatable) { "[no-]" } else { "" };
-      let value = if (p.kind == ParamKind.option) { " <${p.valueName}>" } else { "" };
-      "${shortPart}--${negation}${p.name}${value}"
+      "${shortPart}${style.prefix}${negation}${p.name}${valueForm(p, style)}"
+    }
+
+    let valueForm(p: Param, style: Style): String {
+      if (p.kind != ParamKind.option) {
+        ""
+      } else if (style == Style.windows) {
+        ":<${p.valueName}>"
+      } else {
+        " <${p.valueName}>"
+      }
     }
 
     let annotations(p: Param): List<String> {

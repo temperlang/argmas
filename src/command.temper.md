@@ -43,6 +43,18 @@ Whether a command with [subcommands](#subcommands) may be run without
 one. By default, leaving the subcommand out is an error listing them.
 
       public commandOptional: Boolean = false,
+
+How options are written: `Style.gnu` (`--verbose`, `-v`), the
+default, `Style.singleDash` (`-verbose`), or `Style.windows`
+(`/verbose`), as [styles](style.temper.md) describes. Subcommands
+take their top command's.
+
+      public style: Style = Style.gnu,
+
+A second style also accepted, for a tool moving from one style to the
+other; help shows the first.
+
+      public alsoStyle: Style? = null,
     ) {}
 
 Settings for a subcommand, declared with `cli.command`: its name, what
@@ -53,8 +65,21 @@ its own subcommands may be left out.
     export class SubcommandSpec(
       public name: String,
       public about: String = "",
+
+Other names it answers to, listed in its parent's help.
+
       public aliases: List<String> = [],
+
+Other names it answers to that help doesn't show, such as old names
+kept working; suggestions don't offer them either.
+
+      public hiddenAliases: List<String> = [],
       public commandOptional: Boolean = false,
+
+Its own version, which gives it its own `--version`; without one,
+only the top command has `--version`.
+
+      public version: String? = null,
     ) {}
 
 Settings for a flag, which takes no value: `--verbose`, or `-v` with a
@@ -333,6 +358,7 @@ names it answers to, all set by `command`.
       private var up: Command? = null;
       private subs: ListBuilder<Command> = new ListBuilder<Command>();
       private var otherNames: List<String> = [];
+      private var hiddenNames: List<String> = [];
 
 Every argument declared, in order.
 
@@ -472,13 +498,52 @@ parsing its top command with the subcommand's path first:
 
       public usage(width: Int = 80): String { usageText(this, width) }
 
-Whether `--help`, `-h`, and `--version` are built in: they are unless
-the program declares those names itself (or, for `--version`, has no
-version, which subcommands never have).
+Whether `--help`, `-h`, and `--version` are built in (in `windows`
+style, `/?` too): they are unless the program declares those names
+itself, in any of its styles (or, for `--version`, has no version,
+which a subcommand has only when its spec gives one).
 
-      public get builtInHelpLong(): Boolean { findLong("help") == null }
-      public get builtInHelpShort(): Boolean { findShort("h") == null }
-      public get builtInVersion(): Boolean { spec.version != null && findLong("version") == null }
+      public get builtInHelpLong(): Boolean { !answers("help", false) }
+      public get builtInHelpShort(): Boolean { !answers("h", true) }
+      public get builtInHelpQuestion(): Boolean {
+        accepts(Style.windows) && find("?", Style.windows, true) == null
+      }
+      public get builtInVersion(): Boolean { spec.version != null && !answers("version", false) }
+
+      private answers(name: String, asShort: Boolean): Boolean {
+        for (let style of styles) {
+          if (find(name, style, asShort) != null) { return true; }
+        }
+        false
+      }
+
+The styles this command accepts, its top command's: the first, then
+any second.
+
+      public get styles(): List<Style> {
+        let topSpec = top.spec;
+        let also = topSpec.alsoStyle;
+        if (also != null && also != topSpec.style) { [topSpec.style, also] } else { [topSpec.style] }
+      }
+
+The first style, which help and messages use.
+
+      public get style(): Style { top.spec.style }
+
+      public accepts(style: Style): Boolean {
+        for (let s of styles) {
+          if (s == style) { return true; }
+        }
+        false
+      }
+
+The option or flag this command accepts with this name in `style`: in
+`gnu`, a short name when `asShort` and a long one otherwise; in the
+other styles, either, ignoring case in `windows`.
+
+      public find(name: String, style: Style, asShort: Boolean): Param? {
+        findIn(options, name, style, asShort)
+      }
 
 The option or flag this command accepts with this long or short name,
 if any: its own, or one its parents declared `inherited`.
@@ -528,12 +593,14 @@ subcommand and returns its own `Command`, with its own arguments, help,
 errors, and, if it likes, subcommands of its own.
 
       public command(spec: SubcommandSpec): Command {
-        let sub = new Command(new CommandSpec(spec.name, spec.about, null, spec.commandOptional));
+        let sub = new Command(new CommandSpec(spec.name, spec.about, spec.version, spec.commandOptional, Style.gnu, null));
         sub.up = this;
         sub.otherNames = spec.aliases;
+        sub.hiddenNames = spec.hiddenAliases;
         let names = new ListBuilder<String>();
         names.add(spec.name);
         for (let alias of spec.aliases) { names.add(alias); }
+        for (let alias of spec.hiddenAliases) { names.add(alias); }
         for (let name of names.toList()) {
           if (!validName(name)) {
             specProblems.add("invalid command name '${name}'");
@@ -553,9 +620,11 @@ The subcommands declared, in order.
 
       public get commands(): List<Command> { subs.toList() }
 
-The other names this subcommand answers to.
+The other names this subcommand answers to that help shows, and those
+it doesn't.
 
       public get aliases(): List<String> { otherNames }
+      public get hiddenAliases(): List<String> { hiddenNames }
 
 The top command's name, then each subcommand's down to this one, as
 usage lines show it: `frob remote add`.
@@ -599,6 +668,9 @@ The subcommand with this name or alias, if any.
           for (let alias of sub.aliases) {
             if (alias == name) { return sub; }
           }
+          for (let alias of sub.hiddenAliases) {
+            if (alias == name) { return sub; }
+          }
         }
         null
       }
@@ -633,8 +705,66 @@ has the name of one its parents declared `inherited`.
             }
           }
         }
+        collectStyleProblems(out, location);
         for (let sub of subs.toList()) { sub.collectProblems(out); }
       }
+
+In `singleDash` and `windows`, long and short names share one
+namespace, and in `windows` case doesn't tell names apart, so names
+that differ only that way are declared twice. (Those equal in `gnu`
+are reported above.)
+
+      private collectStyleProblems(out: ListBuilder<String>, location: String): Void {
+        let all = options;
+        let ownCount = params.toList().filter { (p: Param): Boolean => p.kind != ParamKind.positional }.length;
+        for (let style of styles) {
+          if (!style.oneNamespace) { continue; }
+          for (var j = 0; j < ownCount; j += 1) {
+            let p = all[j];
+            for (var k = 0; k < all.length; k += 1) {
+              if (k == j || (k < ownCount && k < j)) { continue; }
+              let q = all[k];
+              let clash = styleClash(p, q, style);
+              if (clash != null) { out.add("${style.shortPrefix}${clash} declared twice${location}"); }
+            }
+          }
+        }
+      }
+    }
+
+The name `p` shares with `q` in `style`, if any, beyond the same long
+or the same short name, which `gnu` reports already.
+
+    let styleClash(p: Param, q: Param, style: Style): String? {
+      let ic = style.ignoresCase;
+      let ps = p.short;
+      let qs = q.short;
+      if (p.name != q.name && sameName(p.name, q.name, ic)) { return p.name; }
+      if (qs != null && sameName(p.name, qs, ic)) { return p.name; }
+      if (ps != null) {
+        if (sameName(ps, q.name, ic)) { return ps; }
+        if (qs != null && ps != qs && sameName(ps, qs, ic)) { return ps; }
+      }
+      null
+    }
+
+The option or flag in `params` with this name, as `Command.find`
+describes.
+
+    let findIn(params: List<Param>, name: String, style: Style, asShort: Boolean): Param? {
+      let ic = style.ignoresCase;
+      for (let p of params) {
+        if (p.kind == ParamKind.positional) { continue; }
+        let short = p.short;
+        if (style.oneNamespace) {
+          if (sameName(p.name, name, ic) || (short != null && sameName(short, name, ic))) { return p; }
+        } else if (asShort) {
+          if (short == name) { return p; }
+        } else if (p.name == name) {
+          return p;
+        }
+      }
+      null
     }
 
 A long name or a command's name is one or more characters, not

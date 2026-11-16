@@ -76,3 +76,27 @@ The subcommands example.
       let error = git.parse(["ad"]) as ArgError orelse panic();
       assert(error.message == "unknown command 'ad'; did you mean add?");
     }
+
+The styles example.
+
+    test("styles tour") {
+      let cli = new Command({ name: "frob", style: Style.windows });
+      let verbose = cli.flag({ name: "verbose", short: "v", help: "Say more." });
+      let out = cli.option(strings, { name: "out", help: "Where to write." });
+      let args = cli.parse(["/V", "/out:C:\\x.txt"]) as Args orelse panic();
+      assert(args.get(verbose));
+      assert(args.get(out) == "C:\\x.txt");
+      assert(outcome(cli.parse(["/?"])) == "help");
+      assert(cli.help() == """
+        "Usage: frob [OPTIONS]
+        "
+        "Options:
+        "  /v, /verbose    Say more.
+        "      /out:<OUT>  Where to write.
+        "  /?, /help       Show this help and exit.
+      );
+      let go = new Command({ name: "frob", style: Style.singleDash });
+      let level = go.optionOr(ints, 3, { name: "level" });
+      assert((go.parse(["-level=5"]) as Args orelse panic()).get(level) == 5);
+      assert((go.parse(["-level", "5"]) as Args orelse panic()).get(level) == 5);
+    }

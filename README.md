@@ -6,7 +6,7 @@ help, clear errors with suggestions, and shell completions, with the same
 behavior in C++, C#, Java, JavaScript, Lua, Python, and Rust.
 
 **Status: early.** Options, flags, positional arguments, environment
-fallbacks, subcommands, help, and errors work; argument styles and
+fallbacks, subcommands, argument styles, help, and errors work;
 completions are next.
 See [docs/design.md](docs/design.md). It stays beta until Temper's
 translations reach 1.0, and the API may change.
@@ -75,6 +75,27 @@ when (args.command) {
 // `minigit ad` says "unknown command 'ad'; did you mean add?".
 ```
 
+Options are written GNU style by default (`-v`, `-vq`, `--out=f`), or
+in the style a command chooses, with help to match: `Style.singleDash`
+(`-verbose`, `-level=5`, as in Go) or `Style.windows` (`/v`,
+`/out:f`, `/?`):
+
+```temper
+let cli = new Command({ name: "frob", style: Style.windows });
+let verbose = cli.flag({ name: "verbose", short: "v", help: "Say more." });
+let out = cli.option(strings, { name: "out", help: "Where to write." });
+let args = cli.parse(["/V", "/out:C:\\x.txt"]) as Args orelse panic();
+args.get(verbose); // true: Windows names ignore case
+args.get(out);     // "C:\\x.txt"
+// `frob /?` gives the help:
+// Usage: frob [OPTIONS]
+//
+// Options:
+//   /v, /verbose    Say more.
+//       /out:<OUT>  Where to write.
+//   /?, /help       Show this help and exit.
+```
+
 A program usually matches on the result: `Args` to run, `Output` to
 print and exit with status 0, and `ArgError` to print to standard error
 and exit with status 2. Parsing touches nothing outside: the program
@@ -110,9 +131,10 @@ Or on every backend:
 
 Source files in `src/` are literate Markdown: `command.temper.md`
 declares commands and their arguments, `parse.temper.md` parses,
-`help.temper.md` writes help, and `values.temper.md` has the value
-types, with tests beside them in `-tests` files and subcommands' tests
-in `subcommand-tests.temper.md`. `tour-tests.temper.md` checks the
+`help.temper.md` writes help, `style.temper.md` has the argument
+styles, and `values.temper.md` has the value types, with tests beside
+them in `-tests` files and subcommands' tests in
+`subcommand-tests.temper.md`. `tour-tests.temper.md` checks the
 examples above.
 
 ## License
