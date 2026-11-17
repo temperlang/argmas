@@ -254,7 +254,7 @@ parent's option given too late uses the form typed.
       let force = add.flag({ name: "force", short: "f", help: "Add ignored files too." });
       add.positionals(strings, { name: "PATH" });
       let args = cli.parse(["/dir:src", "add", "/F", "/q", "/tmp/a"]) as Args orelse panic();
-      assert(same(args.command, add));
+      assert(args.command == add);
       assert(args.get(force));
       assert(args.get(quiet));
       assert(args.get(dir) == "src");

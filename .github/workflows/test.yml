@@ -21,7 +21,7 @@ env:
   # rfc-657-transition. Once the switch lands, download Temper's
   # nightly from temperlang/temper's releases instead, as the other
   # libraries do, and drop the `temper` job's build.
-  TEMPEST_COMMIT: 43c07a78c1c521781db74474576a9d8cf235bd9b
+  TEMPEST_COMMIT: b2425cde00751867eccd90b13e58eadd1336dda3
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
 
 jobs:

@@ -19,19 +19,17 @@ and mistakes in a program's messages. `Frob` is the command from the
     test("placeholders") {
       assert(commas(placeholders("{b} and {a}, {{c}}") ?? ["(null)"]) == "b,a");
       assert(commas(placeholders("plain") ?? ["(null)"]) == "");
-      assert(unpaired("open {a"));
-      assert(unpaired("close a}"));
-      assert(unpaired("{a{b}"));
+      assert(placeholders("open {a") == null);
+      assert(placeholders("close a}") == null);
+      assert(placeholders("{a{b}") == null);
     }
-
-    let unpaired(template: String): Boolean { placeholders(template) == null }
 
 Every English template is well formed, so each key's placeholders are
 known.
 
     test("English messages are well formed") {
       englishMessages.forEach { (key: String, template: String): Void =>
-        assert(!unpaired(template)) { "${key} is well formed" }
+        assert(placeholders(template) != null) { "${key} is well formed" }
       }
     }
 

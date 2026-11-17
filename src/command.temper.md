@@ -837,7 +837,7 @@ inherited from above meets this command's short names here.
         let owned = new ListBuilder<Boolean>();
         for (let p of all) {
           // Own, not inherited: those come from commands further up.
-          let own = p.command.depth == depth;
+          let own = p.command == this;
           names.add(p.name);
           owned.add(own);
           if (p.negatable) {

@@ -702,10 +702,6 @@ the API, and the choice made for each:
   the same path (`frob remote add`). That lets a program match
   `args.command` in a `when`; two separately built commands with the
   same path compare equal, so compare commands of one tree.
-- **`==` on a nullable `Command` isn't translated** (tempest's code
-  generation doesn't take a user-defined `==` through `?`), so
-  `args.command` is never null: it's the top command when no
-  subcommand ran.
 - **`global` is a keyword in Python**, where generated code would have
   `global_`, so the setting is `inherited`, picocli's word for it.
 - **Enums aren't translated well yet**, so kinds (`ErrorKind`,

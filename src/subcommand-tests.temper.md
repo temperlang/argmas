@@ -79,11 +79,6 @@ or which command's help, or an error's kind and message.
       }
     }
 
-`same` compares commands outside `assert`, whose message would need
-them as text.
-
-    let same(a: Command, b: Command): Boolean { a == b }
-
 ## Choosing a subcommand
 
 The first positional argument names the subcommand, and the arguments
@@ -139,8 +134,8 @@ A program matches `args.command` against the commands it declared.
       assert(which(["remote", "add", "origin", "x"]) == "remote add");
       assert(which(["remote", "ls"]) == "remote list");
       // Commands are the same by path, so `remote add` isn't `add`.
-      assert(!same(t.add, t.remoteAdd));
-      assert(same(t.add, t.cli.findCommand("add") ?? panic()));
+      assert(t.add != t.remoteAdd);
+      assert(t.add == t.cli.findCommand("add"));
     }
 
 ## Inherited options
@@ -244,7 +239,7 @@ optional; `--` doesn't select one.
       let v = cli.flag({ name: "v", short: "v" });
       let sub = cli.subcommand({ name: "sub" });
       let args = cli.parse(["-v"]) as Args orelse panic();
-      assert(same(args.command, cli));
+      assert(args.command == cli);
       assert(args.get(v));
       assert(outcome(cli.parse(["sub"])) == "ok");
       assert(outcome(cli.parse(["other"])) == "unknownCommand: unknown command 'other'");
@@ -272,11 +267,11 @@ commands.
       let build = cli.subcommand({ name: "build" });
       let jobs = build.optionOr(ints, 1, { name: "jobs", short: "j" });
       let args = cli.parse(["x", "build", "-j", "4"]) as Args orelse panic();
-      assert(same(args.command, build));
+      assert(args.command == build);
       assert(commas(args.get(target)) == "x");
       assert(args.get(jobs) == 4);
       let named = cli.parse(["--", "build"]) as Args orelse panic();
-      assert(same(named.command, cli));
+      assert(named.command == cli);
       assert(commas(named.get(target)) == "build");
       let other = cli.parse(["clean"]) as Args orelse panic();
       assert(commas(other.get(target)) == "clean");
@@ -335,7 +330,7 @@ built in.
       let mine = cli.subcommand({ name: "help", about: "Mine." });
       let topic = mine.positionals(strings, { name: "TOPIC" });
       let args = cli.parse(["help", "x"]) as Args orelse panic();
-      assert(same(args.command, mine));
+      assert(args.command == mine);
       assert(commas(args.get(topic)) == "x");
       assert(!cli.builtInHelpCommand);
     }

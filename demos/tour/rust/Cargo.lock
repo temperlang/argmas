@@ -33,7 +33,7 @@ dependencies = [
 
 [[package]]
 name = "temper-core"
-version = "0.7.0-alpha.0.235"
+version = "0.7.0-alpha.0.239"
 dependencies = [
  "indexmap",
 ]

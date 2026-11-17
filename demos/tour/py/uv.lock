@@ -13,8 +13,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "temper-core", specifier = "==0.7.0.dev235" },
-    { name = "temper-std", specifier = "==0.7.0.dev235" },
+    { name = "temper-core", specifier = "==0.7.0.dev239" },
+    { name = "temper-std", specifier = "==0.7.0.dev239" },
 ]
 
 [[package]]
@@ -36,16 +36,16 @@ requires-dist = [
 
 [[package]]
 name = "temper-core"
-version = "0.7.0.dev235"
+version = "0.7.0.dev239"
 source = { editable = "../../../temper.out/py/temper-core" }
 
 [[package]]
 name = "temper-std"
-version = "0.7.0.dev235"
+version = "0.7.0.dev239"
 source = { editable = "../../../temper.out/py/std" }
 dependencies = [
     { name = "temper-core" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "temper-core", specifier = "==0.7.0.dev235" }]
+requires-dist = [{ name = "temper-core", specifier = "==0.7.0.dev239" }]
