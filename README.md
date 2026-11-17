@@ -238,6 +238,12 @@ those not installed:
 
     uv run tests/shells/run.py [SHELL ...]
 
+`tests/reference/run.py` parses the same command lines with Argmas,
+glibc's `getopt_long`, and Python's argparse, and fails on any
+difference not documented in `tests/reference/differences.toml`:
+
+    uv run tests/reference/run.py [-v] [PARSER ...]
+
 The [site](https://temperlang.github.io/argmas/) is built from the
 tours and `site/examples.py`, running the JavaScript and Python
 libraries for everything Argmas prints on it (see `site/build.py`):
@@ -248,8 +254,9 @@ libraries for everything Argmas prints on it (see `site/build.py`):
     python3 -m http.server --bind 127.0.0.1 -d site/build
 
 CI ([test.yml](.github/workflows/test.yml)) runs the tests on every
-backend, the tours, and the shells: bash, zsh, fish, and PowerShell on
-Linux, bash, zsh, and fish on macOS, and PowerShell on Windows.
+backend, the tours, the reference parsers, and the shells: bash, zsh,
+fish, and PowerShell on Linux, bash, zsh, and fish on macOS, and
+PowerShell on Windows.
 
 ## License
 

@@ -1,0 +1,191 @@
+# Where a reference parser gives something other than what Argmas gives,
+# and why Argmas differs. tests/reference/run.py fails on a difference
+# that isn't here, on one that gives something other than `gives`, and
+# on an entry that no longer differs.
+#
+# `gives` is the reference's result as run.py sums it up: "error: KIND",
+# "output: help", or a table of the values not at their defaults. The
+# argparse entries are from Python 3.12; getopt's from glibc 2.39.
+
+# Prefixes of long options. getopt_long and argparse (by default) take
+# a unique prefix as the whole name; Argmas doesn't, since a prefix
+# that works today breaks when a later version adds an option with the
+# same start, and scripts end up depending on it. It suggests the name
+# instead ("unknown option --verb; did you mean --verbose?"). Whether to
+# offer prefixes as a setting is an open item in docs/design.md.
+
+[[difference]]
+case = "prefix-unique"
+parser = "getopt"
+gives = { verbose = 1 }
+why = "getopt_long takes a unique prefix of a long option; Argmas doesn't match prefixes"
+
+[[difference]]
+case = "prefix-unique"
+parser = "argparse"
+gives = { verbose = 1 }
+why = "argparse takes a unique prefix unless allow_abbrev=False; Argmas doesn't match prefixes"
+
+[[difference]]
+case = "prefix-unique-value"
+parser = "getopt"
+gives = { output = "x" }
+why = "getopt_long takes a unique prefix of a long option; Argmas doesn't match prefixes"
+
+[[difference]]
+case = "prefix-unique-value"
+parser = "argparse"
+gives = { output = "x" }
+why = "argparse takes a unique prefix unless allow_abbrev=False; Argmas doesn't match prefixes"
+
+[[difference]]
+case = "prefix-ambiguous"
+parser = "getopt"
+gives = "error: ambiguousOption"
+why = "an error either way; without prefix matching, Argmas has no ambiguous options, only unknown ones"
+
+[[difference]]
+case = "prefix-ambiguous"
+parser = "argparse"
+gives = "error: ambiguousOption"
+why = "an error either way; without prefix matching, Argmas has no ambiguous options, only unknown ones"
+
+[[difference]]
+case = "long-empty-name"
+parser = "getopt"
+gives = "error: ambiguousOption"
+why = "an error either way; getopt_long reads the empty name as a prefix of every long option"
+
+[[difference]]
+case = "long-empty-name"
+parser = "argparse"
+gives = "error: ambiguousOption"
+why = "an error either way; argparse reads the empty name as a prefix of every long option"
+
+# A separate value that looks like an option. getopt_long takes the
+# next argument as the value whatever it is, so a forgotten value
+# silently swallows the next option. Argmas, like argparse and clap,
+# calls that a missing value, except for `-` alone and negative
+# numbers, and its message shows the `--output=-x` form for a value
+# that really starts with `-`.
+
+[[difference]]
+case = "missing-value-before-option"
+parser = "getopt"
+gives = { output = "--quiet" }
+why = "getopt_long takes any next argument as the value; Argmas reports a missing value rather than swallow an option"
+
+[[difference]]
+case = "missing-value-short-before-option"
+parser = "getopt"
+gives = { output = "-q" }
+why = "getopt_long takes any next argument as the value; Argmas reports a missing value rather than swallow an option"
+
+[[difference]]
+case = "dash-value-separate"
+parser = "getopt"
+gives = { output = "-x" }
+why = "getopt_long takes any next argument as the value; Argmas needs --output=-x or -o-x for a value starting with -"
+
+[[difference]]
+case = "double-dash-as-value"
+parser = "getopt"
+gives = { name = "--" }
+why = "getopt_long takes any next argument as the value; Argmas reports a missing value, as argparse does"
+
+# Negative numbers. getopt_long reads `-5` as the option `-5`; Argmas,
+# like argparse, takes negative numbers as values and positional
+# arguments, unless the command has a short option that's a digit.
+
+[[difference]]
+case = "negative-positional"
+parser = "getopt"
+gives = "error: unknownOption"
+why = "getopt_long reads -5 as a short option; Argmas takes negative numbers as positional arguments, as argparse does"
+
+[[difference]]
+case = "negative-float-positional"
+parser = "getopt"
+gives = "error: unknownOption"
+why = "getopt_long reads -1.5 as short options; Argmas takes negative numbers as positional arguments, as argparse does"
+
+# `=` after a short option. getopt_long keeps it as part of the value;
+# Argmas, like clap and argparse, drops one `=`, so `-o=file` is
+# `file`, and after a flag it's a value the flag doesn't take.
+
+[[difference]]
+case = "short-equals"
+parser = "getopt"
+gives = { output = "=file" }
+why = "getopt_long keeps the = in the value; Argmas drops one =, as clap and argparse do"
+
+[[difference]]
+case = "short-flag-equals"
+parser = "getopt"
+gives = "error: unknownOption"
+why = "an error either way; getopt_long reads = as a short option, and Argmas says -q takes no value, as clap and argparse do"
+
+[[difference]]
+case = "bundle-dash"
+parser = "argparse"
+gives = "error: unexpectedValue"
+why = "an error either way; argparse reads the rest of the bundle as -v's value, and Argmas, as getopt_long does, reads - as an unknown option"
+
+# Options after positional arguments. argparse's parse_args fills a
+# list of positional arguments from the first run of them only, and
+# calls later ones unrecognized (its parse_intermixed_args doesn't);
+# Argmas permutes, as getopt_long does.
+
+[[difference]]
+case = "options-after-positionals"
+parser = "argparse"
+gives = "error: tooManyPositionals"
+why = "argparse's parse_args takes positional arguments from their first run only; Argmas permutes, as getopt_long does"
+
+# Help wins. A program on getopt_long stops at the first error; Argmas
+# gives help when it's asked for anywhere before `--`, so a user can
+# always get it, as argparse does.
+
+[[difference]]
+case = "help-after-error"
+parser = "getopt"
+gives = "error: unknownOption"
+why = "the getopt_long program stops at its first error; in Argmas, help wins over errors, as in argparse"
+
+# Error order. With several errors, Argmas reports the first in its
+# documented order (positional counts before missing required options);
+# argparse lists every missing argument in one message, in declaration
+# order, summed up here by the first.
+
+[[difference]]
+case = "missing-required-and-positional"
+parser = "argparse"
+gives = "error: missingRequired"
+why = "argparse names --output and FILE in one message; Argmas reports positional counts before missing required options"
+
+# 32-bit integers. Argmas's ints are 32-bit in every language; argparse's
+# int is unbounded. (Int64 values are an open item in docs/design.md.)
+
+[[difference]]
+case = "long-int-too-big"
+parser = "argparse"
+gives = { level = 99999999999 }
+why = "Python's int is unbounded; Argmas's ints are 32-bit in every language"
+
+# `--` before a subcommand. In Argmas, no word after `--` selects a
+# subcommand, so `git -- add` has none (and an extra positional
+# argument, reported after it). A getopt_long program that stops at the
+# first non-option skips `--` and takes the next word as the command;
+# argparse 3.12 takes `--` itself as the command's name.
+
+[[difference]]
+case = "sub-after-double-dash"
+parser = "getopt"
+gives = { command = "git add" }
+why = "the getopt_long program takes the word after -- as the command; in Argmas, -- makes the words after it positional"
+
+[[difference]]
+case = "sub-after-double-dash"
+parser = "argparse"
+gives = "error: unknownCommand"
+why = "an error either way; argparse 3.12 takes -- as the command's name, and Argmas reports the missing command"

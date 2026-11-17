@@ -582,6 +582,12 @@ a value it took.
             }
             return takeNext(p, next);
           } else if (p != null) {
+            // `=` right after a flag is a value it doesn't take, as
+            // `--quiet=yes` is, unless `=` is a short name itself.
+            if (arg.hasIndex(after) && arg[after] == char'=' && command.findShort("=") == null) {
+              fail(command, ErrorKind.unexpectedValue, say("error.unexpectedValue", ["option", "-${c}"]));
+              return next;
+            }
             occur(p, false);
           } else if (c == "h" && command.builtInHelpShort) {
             helpFor = command;

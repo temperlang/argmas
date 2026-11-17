@@ -237,6 +237,16 @@ A negatable counted flag goes back to zero.
       assert(f.run(["--verbose="]) == "unexpectedValue: option --verbose takes no value");
     }
 
+So does `=` right after a short flag, even in a bundle, as in clap and
+argparse, rather than reading as an unknown option `-=`.
+
+    test("short flags take no value") {
+      let f = new Frob();
+      assert(f.run(["-q=yes"]) == "unexpectedValue: option -q takes no value");
+      assert(f.run(["-vq="]) == "unexpectedValue: option -q takes no value");
+      assert(f.run(["-v=1"]) == "unexpectedValue: option -v takes no value");
+    }
+
 ## Positional arguments
 
     test("positionals") {
