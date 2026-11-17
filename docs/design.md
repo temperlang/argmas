@@ -164,7 +164,7 @@ Each corner case gets one decision, written down here, and a test
 - **Bundles:** in `-vql9`, flags count until an option, which takes the
   rest (`9`), even letters that are options (`-ovq` is `-o vq`).
 - **Flags given a value** (`--quiet=yes`, `--no-color=1`, and `-q=yes`,
-  as in clap and argparse) are errors.
+  as in argparse) are errors.
 - **Repeats:** a plain flag given twice is still true; a counted flag
   counts; an option's last value wins unless it's `repeated`.
 - **`--no-NAME`** works only for flags declared negatable, setting them
@@ -641,14 +641,14 @@ written as a comment line.
 - **Against reference parsers:** `tests/reference/run.py` parses a
   table of command lines, from bundles and `--` to negative numbers and
   subcommands, with Argmas and with glibc's `getopt_long` (a small C
-  program) and Python's argparse, each declaring the same spec, and
-  fails on any difference not documented, with why, in
+  program), Python's argparse, and Rust's clap (a small program on its
+  builder API), each declaring the same spec, and fails on any
+  difference not documented, with why, in
   `tests/reference/differences.toml`; CI runs it on Linux. The
   differences are deliberate: no prefix matching, no option read as a
   separate value, negative numbers as values, `-o=file` as `file`,
-  options after positional arguments, and help winning over errors.
-  clap can join as a third reference, a small Rust program on the same
-  protocol, once its crate is approved.
+  options after positional arguments, the last of a repeated option
+  winning, and help winning over errors.
 - **Help and errors:** goldens of the exact text, in English and with
   a program's own messages, including a partial German table kept as
   a test fixture, not a translation.
@@ -759,8 +759,8 @@ In this order, as agreed (2026-11-16):
 1. The message table (done).
 2. A project site, with the tours as its seed (done: `site/`, published
    from main; per-language tabs for the examples beyond the tour later).
-3. Testing against reference parsers (done for `getopt_long` and
-   argparse: `tests/reference/`; clap later, needing its crate).
+3. Testing against reference parsers (done: `getopt_long`, argparse,
+   and clap, in `tests/reference/`).
 4. Small open items: flags that default to true, `Int64` values, the
    decision on prefix matching, and unquoting on bash lines in
    completions.

@@ -16,11 +16,13 @@ all declaring the same spec from SPECS:
   `$CC`) into a throwaway directory. Only on glibc, since other C
   libraries' getopt_long differ.
 - `argparse`: Python's own, in this process, with its defaults.
+- `clap`: Rust's clap, its builder API, in clap/, built with `cargo`
+  (or `$CARGO`) into clap/target, from its Cargo.lock.
 
 Each result is summed up the same way: `error: KIND` (Argmas's error
-kinds, plus `ambiguousOption`, which only references give), `output:
-help`, or the values not at their defaults, with the command's path
-when it has subcommands. A reference that gives what Argmas gives
+kinds, plus `ambiguousOption` and `givenTwice`, which only references
+give), `output: help`, or the values not at their defaults, with the
+command's path when it has subcommands. A reference that gives what Argmas gives
 matches; one that doesn't must give what differences.toml says, with
 why, or the run fails. An entry there that no longer differs fails
 too, so the file stays true. Parsers that can't run are skipped (with
@@ -39,7 +41,8 @@ line per command and argument, from `spec_text`:
 
 KIND is flag, count, negatable, option, required, repeated,
 positional, or positionals, and TYPE string or int. Add it to
-`EXTERNAL`, with how it's built, as `build_getopt` does.
+`EXTERNAL`, with how it's built, as `build_getopt` and `build_clap`
+do.
 """
 
 import argparse
@@ -419,7 +422,17 @@ def build_getopt(tmp):
     return [str(program)], None
 
 
-EXTERNAL = {"getopt": build_getopt}
+def build_clap(tmp):
+    cargo = os.environ.get("CARGO", "cargo")
+    if shutil.which(cargo) is None:
+        return None, f"{cargo} isn't installed"
+    manifest = HERE / "clap" / "Cargo.toml"
+    subprocess.run([cargo, "build", "--locked", "--release", "--quiet", "--manifest-path", str(manifest)], check=True)
+    program = HERE / "clap" / "target" / "release" / "argmas-reference-clap"
+    return [str(program.with_suffix(".exe") if os.name == "nt" else program)], None
+
+
+EXTERNAL = {"getopt": build_getopt, "clap": build_clap}
 
 
 def external_parser(command):
@@ -434,7 +447,7 @@ def external_parser(command):
     return parse
 
 
-REFERENCES = ["getopt", "argparse"]
+REFERENCES = ["getopt", "argparse", "clap"]
 
 
 def main():

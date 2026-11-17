@@ -1,0 +1,18 @@
+# A small program on clap's builder API, for comparing Argmas with it;
+# tests/reference/run.py builds it and runs it once per case. Its own
+# workspace, so it never joins another one above it.
+[package]
+name = "argmas-reference-clap"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+license = "Apache-2.0 OR MIT"
+
+[dependencies]
+# Builder API only. error-context names the argument an error is about,
+# from which the program tells its kinds apart, as run.py does
+# argparse's from their messages.
+clap = { version = "=4.6.7", default-features = false, features = ["std", "help", "error-context"] }
+
+[workspace]

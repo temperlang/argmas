@@ -223,13 +223,14 @@ jobs:
         run: uv run --python 3.11 tests/shells/run.py --no-build --require ${{ matrix.shells }}
 
   # The same command lines through Argmas (the Python library) and
-  # reference parsers, glibc's getopt_long and Python's argparse, with
-  # every difference documented in tests/reference/differences.toml.
-  # Ubuntu's own Python, whose argparse the file records, and cc.
+  # reference parsers, glibc's getopt_long, Python's argparse, and
+  # Rust's clap, with every difference documented in
+  # tests/reference/differences.toml. Ubuntu's own Python, whose
+  # argparse the file records, and cc.
   reference:
     needs: temper
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -238,6 +239,17 @@ jobs:
         with:
           name: argmas-py
           path: temper.out/py
+      # The clap program builds with the same pinned Rust as the
+      # compiler, from its Cargo.lock, cached by that lock.
+      - uses: dtolnay/rust-toolchain@cfcaf53ba4c621917ec7f78a66bff7a8848ddad4 # 1.85.0 branch, 2026-10-16
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            tests/reference/clap/target
+          key: reference-clap-${{ runner.os }}-${{ hashFiles('tests/reference/clap/Cargo.lock') }}
+      - run: cargo fetch --locked --manifest-path tests/reference/clap/Cargo.toml
       - name: Against reference parsers
         run: /usr/bin/python3 tests/reference/run.py --no-build --require
 

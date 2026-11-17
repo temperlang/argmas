@@ -239,8 +239,10 @@ those not installed:
     uv run tests/shells/run.py [SHELL ...]
 
 `tests/reference/run.py` parses the same command lines with Argmas,
-glibc's `getopt_long`, and Python's argparse, and fails on any
-difference not documented in `tests/reference/differences.toml`:
+glibc's `getopt_long`, Python's argparse, and Rust's clap, and fails on
+any difference not documented in `tests/reference/differences.toml`,
+skipping references it can't build (getopt needs `cc` on glibc, clap
+needs `cargo`):
 
     uv run tests/reference/run.py [-v] [PARSER ...]
 

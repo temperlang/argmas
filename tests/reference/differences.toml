@@ -5,12 +5,14 @@
 #
 # `gives` is the reference's result as run.py sums it up: "error: KIND",
 # "output: help", or a table of the values not at their defaults. The
-# argparse entries are from Python 3.12; getopt's from glibc 2.39.
+# argparse entries are from Python 3.12; getopt's from glibc 2.39;
+# clap's from clap 4.6.7, its builder API with its defaults.
 
 # Prefixes of long options. getopt_long and argparse (by default) take
-# a unique prefix as the whole name; Argmas doesn't, since a prefix
-# that works today breaks when a later version adds an option with the
-# same start, and scripts end up depending on it. It suggests the name
+# a unique prefix as the whole name; Argmas doesn't (nor does clap,
+# unless infer_long_args is set), since a prefix that works today
+# breaks when a later version adds an option with the same start, and
+# scripts end up depending on it. It suggests the name
 # instead ("unknown option --verb; did you mean --verbose?"). Whether to
 # offer prefixes as a setting is an open item in docs/design.md.
 
@@ -67,7 +69,8 @@ why = "an error either way; argparse reads the empty name as a prefix of every l
 # silently swallows the next option. Argmas, like argparse and clap,
 # calls that a missing value, except for `-` alone and negative
 # numbers, and its message shows the `--output=-x` form for a value
-# that really starts with `-`.
+# that really starts with `-`. clap, unless allow_hyphen_values is set,
+# reads such a value as an option, and reports it when it's unknown.
 
 [[difference]]
 case = "missing-value-before-option"
@@ -88,14 +91,22 @@ gives = { output = "-x" }
 why = "getopt_long takes any next argument as the value; Argmas needs --output=-x or -o-x for a value starting with -"
 
 [[difference]]
+case = "dash-value-separate"
+parser = "clap"
+gives = "error: unknownOption"
+why = "an error either way; clap reads -x as an option, unknown here, and Argmas says --output is missing its value"
+
+[[difference]]
 case = "double-dash-as-value"
 parser = "getopt"
 gives = { name = "--" }
 why = "getopt_long takes any next argument as the value; Argmas reports a missing value, as argparse does"
 
-# Negative numbers. getopt_long reads `-5` as the option `-5`; Argmas,
-# like argparse, takes negative numbers as values and positional
-# arguments, unless the command has a short option that's a digit.
+# Negative numbers. getopt_long reads `-5` as the option `-5`, as clap
+# does unless allow_negative_numbers (or allow_hyphen_values) is set;
+# Argmas, like argparse, takes negative numbers as values and
+# positional arguments, unless the command has a short option that's a
+# digit.
 
 [[difference]]
 case = "negative-positional"
@@ -109,9 +120,40 @@ parser = "getopt"
 gives = "error: unknownOption"
 why = "getopt_long reads -1.5 as short options; Argmas takes negative numbers as positional arguments, as argparse does"
 
+[[difference]]
+case = "negative-value-long"
+parser = "clap"
+gives = "error: unknownOption"
+why = "clap reads -5 as an option unless allow_negative_numbers is set; Argmas takes negative numbers as values, as argparse does"
+
+[[difference]]
+case = "negative-value-short"
+parser = "clap"
+gives = "error: unknownOption"
+why = "clap reads -5 as an option unless allow_negative_numbers is set; Argmas takes negative numbers as values, as argparse does"
+
+[[difference]]
+case = "negative-string-value"
+parser = "clap"
+gives = "error: unknownOption"
+why = "clap reads -5 as an option unless allow_negative_numbers is set; Argmas takes negative numbers as values, as argparse does"
+
+[[difference]]
+case = "negative-positional"
+parser = "clap"
+gives = "error: unknownOption"
+why = "clap reads -5 as an option unless allow_negative_numbers is set; Argmas takes negative numbers as positional arguments, as argparse does"
+
+[[difference]]
+case = "negative-float-positional"
+parser = "clap"
+gives = "error: unknownOption"
+why = "clap reads -1.5 as an option unless allow_negative_numbers is set; Argmas takes negative numbers as positional arguments, as argparse does"
+
 # `=` after a short option. getopt_long keeps it as part of the value;
 # Argmas, like clap and argparse, drops one `=`, so `-o=file` is
-# `file`, and after a flag it's a value the flag doesn't take.
+# `file`. After a flag, Argmas and argparse call it a value the flag
+# doesn't take; getopt_long and clap read `=` as another short option.
 
 [[difference]]
 case = "short-equals"
@@ -123,13 +165,36 @@ why = "getopt_long keeps the = in the value; Argmas drops one =, as clap and arg
 case = "short-flag-equals"
 parser = "getopt"
 gives = "error: unknownOption"
-why = "an error either way; getopt_long reads = as a short option, and Argmas says -q takes no value, as clap and argparse do"
+why = "an error either way; getopt_long reads = as a short option, and Argmas says -q takes no value, as argparse does"
+
+[[difference]]
+case = "short-flag-equals"
+parser = "clap"
+gives = "error: unknownOption"
+why = "an error either way; clap reads = as a short option, as getopt_long does, and Argmas says -q takes no value, as argparse does"
 
 [[difference]]
 case = "bundle-dash"
 parser = "argparse"
 gives = "error: unexpectedValue"
 why = "an error either way; argparse reads the rest of the bundle as -v's value, and Argmas, as getopt_long does, reads - as an unknown option"
+
+# An option or flag given twice. clap refuses it unless
+# args_override_self is set (or the action is Append or Count); Argmas,
+# as getopt_long and argparse do, lets the last value win, so a script
+# or alias can set a default that the user overrides later on the line.
+
+[[difference]]
+case = "option-last-wins"
+parser = "clap"
+gives = "error: givenTwice"
+why = "clap refuses an option given twice unless args_override_self is set; in Argmas the last wins, as in getopt_long and argparse"
+
+[[difference]]
+case = "flag-twice"
+parser = "clap"
+gives = "error: givenTwice"
+why = "clap refuses a flag given twice unless args_override_self is set; in Argmas it's still true, as in getopt_long and argparse"
 
 # Options after positional arguments. argparse's parse_args fills a
 # list of positional arguments from the first run of them only, and
@@ -142,9 +207,9 @@ parser = "argparse"
 gives = "error: tooManyPositionals"
 why = "argparse's parse_args takes positional arguments from their first run only; Argmas permutes, as getopt_long does"
 
-# Help wins. A program on getopt_long stops at the first error; Argmas
-# gives help when it's asked for anywhere before `--`, so a user can
-# always get it, as argparse does.
+# Help wins. A program on getopt_long stops at the first error, as clap
+# does; Argmas gives help when it's asked for anywhere before `--`, so
+# a user can always get it, as argparse does.
 
 [[difference]]
 case = "help-after-error"
@@ -152,16 +217,28 @@ parser = "getopt"
 gives = "error: unknownOption"
 why = "the getopt_long program stops at its first error; in Argmas, help wins over errors, as in argparse"
 
+[[difference]]
+case = "help-after-error"
+parser = "clap"
+gives = "error: unknownOption"
+why = "clap stops at its first error; in Argmas, help wins over errors, as in argparse"
+
 # Error order. With several errors, Argmas reports the first in its
 # documented order (positional counts before missing required options);
-# argparse lists every missing argument in one message, in declaration
-# order, summed up here by the first.
+# argparse and clap list every missing argument in one message, summed
+# up here by the first.
 
 [[difference]]
 case = "missing-required-and-positional"
 parser = "argparse"
 gives = "error: missingRequired"
 why = "argparse names --output and FILE in one message; Argmas reports positional counts before missing required options"
+
+[[difference]]
+case = "missing-required-and-positional"
+parser = "clap"
+gives = "error: missingRequired"
+why = "clap names --output and FILE in one message; Argmas reports positional counts before missing required options"
 
 # 32-bit integers. Argmas's ints are 32-bit in every language; argparse's
 # int is unbounded. (Int64 values are an open item in docs/design.md.)
@@ -176,7 +253,8 @@ why = "Python's int is unbounded; Argmas's ints are 32-bit in every language"
 # subcommand, so `git -- add` has none (and an extra positional
 # argument, reported after it). A getopt_long program that stops at the
 # first non-option skips `--` and takes the next word as the command;
-# argparse 3.12 takes `--` itself as the command's name.
+# argparse 3.12 takes `--` itself as the command's name; clap takes
+# `add` as a positional argument, which `git` doesn't take.
 
 [[difference]]
 case = "sub-after-double-dash"
@@ -189,3 +267,9 @@ case = "sub-after-double-dash"
 parser = "argparse"
 gives = "error: unknownCommand"
 why = "an error either way; argparse 3.12 takes -- as the command's name, and Argmas reports the missing command"
+
+[[difference]]
+case = "sub-after-double-dash"
+parser = "clap"
+gives = "error: tooManyPositionals"
+why = "an error either way; clap takes add as a positional argument, which git has none of, and Argmas reports the missing command first"
