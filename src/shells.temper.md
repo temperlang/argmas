@@ -21,7 +21,7 @@ script starts with a comment saying where its shell looks for it:
 | bash (4.4 or later) | `~/.local/share/bash-completion/completions/frob` for the bash-completion package, or sourced from `~/.bashrc` |
 | zsh | `_frob` in a directory on `$fpath`, such as `~/.zfunc`, before `compinit` in `~/.zshrc` |
 | fish | `~/.config/fish/completions/frob.fish` |
-| PowerShell (5.1 or later) | added to the profile, `$PROFILE`, or saved and dot-sourced from it |
+| PowerShell (5.1 or later) | added to the profile, `$PROFILE`, or saved and dot-sourced from it, though not as `frob.ps1` on `PATH`, which PowerShell would run for `frob` |
 
 zsh, fish, and PowerShell show each candidate's description; bash
 shows only the candidates. `cmd.exe` has no programmable completion,

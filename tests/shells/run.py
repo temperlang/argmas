@@ -9,7 +9,7 @@ Usage, from anywhere in the repo:
 
 Builds the Python library with Temper (`$TEMPER`, or `temper` on PATH),
 unless `--no-build`, then puts tests/shells/frob.py on PATH as `frob` in
-a throwaway directory, installs each shell's script there as `frob
+a throwaway directory, installs each shell's script beside it as `frob
 --completions SHELL` prints it, and completes the command lines in CASES
 in the real shell, comparing what it offers. SHELL is any of bash, zsh,
 fish, and powershell (pwsh); shells that aren't installed are skipped,
@@ -18,14 +18,16 @@ missing shell fails instead). Each shell runs without the user's
 configuration, with HOME in the throwaway directory, so nothing outside
 it changes, and in a directory of its own beside HOME, so the files a
 shell keeps there aren't offered. On Windows, `frob` is a batch file,
-and only PowerShell runs.
+and only PowerShell runs. The scripts aren't on PATH, since there
+PowerShell would run frob.ps1 for `frob`, ahead of frob.cmd.
 
 bash and zsh are driven through a pseudo-terminal, as a user would:
 bash inserts every completion into the line (readline's
 insert-completions) and the line is printed, and zsh lists them
 (delete-char-or-list), once its line editor is reading. fish uses
 `complete -C`, and PowerShell `TabExpansion2`. Exits non-zero on any
-difference.
+difference; for PowerShell, each case that differs also shows what the
+script would run and what comes back (see `diagnose_powershell`).
 """
 
 import argparse
@@ -134,7 +136,7 @@ ANSI = re.compile(r"\x1b(\[[0-9;?]*[ -/]*[@-~]|[()][0-9A-Za-z]|[=>]|\][^\x07]*\x
 
 
 def drive_bash(work, env):
-    script = work.parent / "frob.bash"
+    script = script_path(work, "bash")
     shell = Pty(["bash", "--norc", "--noprofile", "-i"], {**env, "INPUTRC": str(work.parent / "inputrc")}, work)
     shell.send(f"PS1='' PS2=''; source {shlex.quote(str(script))}; echo READY''\r")
     shell.until("READY\r\n")
@@ -160,7 +162,7 @@ ZLE_READY = "<ZLE-READY>"
 
 
 def drive_zsh(work, env):
-    script = work.parent / "frob.zsh"
+    script = script_path(work, "zsh")
     shell = Pty(["zsh", "-f", "-i"], env, work)
     shell.send(
         "PROMPT='' RPROMPT=''; unsetopt beep; autoload -Uz compinit; compinit -u -d $HOME/.zcompdump; "
@@ -203,7 +205,7 @@ def drive_zsh(work, env):
 
 
 def drive_fish(work, env):
-    script = work.parent / "frob.fish"
+    script = script_path(work, "fish")
     results = []
     for case, _ in CASES:
         line, extra = split_case(case)
@@ -216,8 +218,16 @@ def drive_fish(work, env):
     return results
 
 
+# pwsh's own options. Windows may refuse to run scripts, as its
+# execution policy says; elsewhere there's no policy.
+PWSH = ["pwsh", "-NoProfile", "-NonInteractive"] + (["-ExecutionPolicy", "Bypass"] if WINDOWS else [])
+
+# What pwsh printed to stderr for each case, shown when it differs.
+POWERSHELL_STDERR = {}
+
+
 def drive_powershell(work, env):
-    script = work.parent / "frob.ps1"
+    script = script_path(work, "powershell")
     results = []
     for case, _ in CASES:
         line, extra = split_case(case)
@@ -227,11 +237,88 @@ def drive_powershell(work, env):
             " | ForEach-Object { $_.CompletionText }"
         )
         out = subprocess.run(
-            ["pwsh", "-NoProfile", "-NonInteractive", "-Command", command],
+            [*PWSH, "-Command", command],
             env={**env, **extra, "LINE": line}, cwd=work, capture_output=True, text=True, timeout=60,
         )
+        POWERSHELL_STDERR[case] = out.stderr
         results.append(out.stdout.splitlines())
     return results
+
+
+# Run when a PowerShell case differs, in the same PowerShell, with the
+# same script, so the next run on a platform we can't try here explains
+# itself: what `frob` resolves to (a frob.ps1 found first is run instead,
+# and isn't completed as a program), whether the completer is registered
+# (read from PowerShell's internals, so best effort), the `__complete`
+# call the script makes and each line it gets back, with `\r` and `\t`
+# shown, and what the completer itself returns or throws.
+DIAGNOSE_PS1 = r"""
+function Show($text) { "    " + ("$text" -replace "`r", '\r' -replace "`t", '\t') }
+"PowerShell $($PSVersionTable.PSVersion), argument passing $PSNativeCommandArgumentPassing, output encoding $([Console]::OutputEncoding.WebName)"
+try { . $env:SCRIPT } catch { "dot-sourcing the script failed: $_" }
+"'$env:PROGRAM' resolves to:"
+foreach ($command in @(Get-Command $env:PROGRAM -All -ErrorAction SilentlyContinue)) {
+    Show "$($command.CommandType) $($command.Source)"
+}
+$completer = $null
+try {
+    $flags = [System.Reflection.BindingFlags]'NonPublic,Instance'
+    $context = $ExecutionContext.GetType().GetField('_context', $flags).GetValue($ExecutionContext)
+    $table = $context.GetType().GetProperty('NativeArgumentCompleters', $flags).GetValue($context)
+    "native completers registered for: $(@($table.Keys) -join ', ')"
+    $completer = $table[$env:PROGRAM]
+} catch { "native completers: can't tell ($_)" }
+$arguments = @(if ($env:ARGUMENTS) { $env:ARGUMENTS -split "`n" })
+"runs: & '$env:PROGRAM' __complete $env:INDEX $(($arguments | ForEach-Object { "'$_'" }) -join ' ')"
+$lines = @(& $env:PROGRAM __complete $env:INDEX @arguments 2>&1)
+"exit status $LASTEXITCODE, $($lines.Count) lines:"
+foreach ($line in $lines) {
+    if ($line -is [System.Management.Automation.ErrorRecord]) { Show "stderr: $line" } else { Show "<$line>" }
+}
+if ($completer) {
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($env:LINE, [ref]$null, [ref]$null)
+    $commandAst = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true)
+    $word = if ($env:LINE.EndsWith(' ')) { '' } else { $commandAst.CommandElements[-1].Extent.Text }
+    "the completer, called directly with '$word':"
+    try {
+        foreach ($result in @(& $completer $word $commandAst $env:LINE.Length 2>&1)) {
+            if ($result -is [System.Management.Automation.CompletionResult]) { Show "<$($result.CompletionText)>" } else { Show "other: $result" }
+        }
+    } catch { Show "threw: $_" }
+}
+"""
+
+
+def diagnose_powershell(work, env, case):
+    """What PowerShell sees for one case, as lines to print."""
+    line, extra = split_case(case)
+    # The words the script passes, as it finds them in the line.
+    arguments = line.split()[1:]
+    index = len(arguments) - (0 if line.endswith(" ") else 1)
+    diagnose = work.parent / "scripts" / "diagnose.ps1"
+    diagnose.write_text(DIAGNOSE_PS1)
+    try:
+        out = subprocess.run(
+            [*PWSH, "-File", str(diagnose)],
+            env={
+                **env, **extra, "LINE": line, "SCRIPT": str(script_path(work, "powershell")),
+                "PROGRAM": line.split()[0], "INDEX": str(index), "ARGUMENTS": "\n".join(arguments),
+            },
+            cwd=work, capture_output=True, text=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return [f"diagnosis failed: {error}"]
+    found = POWERSHELL_STDERR.get(case, "").splitlines()
+    return (
+        [f"stderr while completing: {row}" for row in found]
+        + out.stdout.splitlines()
+        + [f"diagnosis stderr: {row}" for row in out.stderr.splitlines()]
+    )
+
+
+def script_path(work, shell):
+    """Where a shell's script is installed: beside `frob`, not on PATH."""
+    return work.parent / "scripts" / f"frob.{EXTENSIONS[shell]}"
 
 
 DRIVERS = {"bash": drive_bash, "zsh": drive_zsh, "fish": drive_fish, "powershell": drive_powershell}
@@ -254,11 +341,13 @@ def main():
 
     failed = False
     with tempfile.TemporaryDirectory(prefix="argmas-shells-") as tmp:
-        # Scripts and `frob` in tmp, files to complete in tmp/work, and
-        # HOME in tmp/home, where shells keep their own files.
+        # `frob` in tmp, which is on PATH, scripts in tmp/scripts, which
+        # isn't, files to complete in tmp/work, and HOME in tmp/home,
+        # where shells keep their own files.
         bin_dir = Path(tmp)
         work = bin_dir / "work"
         work.mkdir()
+        (bin_dir / "scripts").mkdir()
         home = bin_dir / "home"
         home.mkdir()
         path = os.pathsep.join(str(OUT / name) for name in ("argmas", "temper-core", "std"))
@@ -298,7 +387,7 @@ def main():
             script = subprocess.run(
                 [str(frob), "--completions", shell], env=env, capture_output=True, text=True, check=True
             ).stdout
-            (bin_dir / f"frob.{EXTENSIONS[shell]}").write_text(script)
+            script_path(work, shell).write_text(script)
             try:
                 results = DRIVERS[shell](work, env)
             except (RuntimeError, OSError, subprocess.SubprocessError) as error:
@@ -310,6 +399,9 @@ def main():
                 if normalized(got) != sorted(expected):
                     bad += 1
                     print(f"{shell}: {case!r}: expected {sorted(expected)}, got {normalized(got)}")
+                    if shell == "powershell":
+                        for row in diagnose_powershell(work, env, case):
+                            print(f"    {row}")
             print(f"{shell}: {len(CASES) - bad} of {len(CASES)} cases match")
             failed = failed or bad > 0
     sys.exit(1 if failed else 0)

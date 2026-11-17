@@ -491,7 +491,9 @@ Decisions, each tested in `src/complete-tests.temper.md` and
   README lists them: the bash-completion directory
   (`~/.local/share/bash-completion/completions/frob`) or `~/.bashrc`,
   a directory on zsh's `$fpath` as `_frob`,
-  `~/.config/fish/completions/frob.fish`, and the PowerShell profile.
+  `~/.config/fish/completions/frob.fish`, and the PowerShell profile,
+  warning against saving it as `frob.ps1` on `PATH`, which PowerShell
+  would run for `frob` ahead of `frob.exe` or `frob.cmd`.
 - **Not supported:** `cmd.exe`, which has no programmable completion.
 
 ## Messages
