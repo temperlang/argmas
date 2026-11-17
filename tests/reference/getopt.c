@@ -24,13 +24,13 @@
 #define HELP_VAL 1000
 #define FIRST_VAL 2000
 
-enum kind { FLAG, COUNT, NEGATABLE, OPTION, REQUIRED, REPEATED, POSITIONAL, POSITIONALS };
+enum kind { FLAG, COUNT, NEGATABLE, ON, OPTION, REQUIRED, REPEATED, POSITIONAL, POSITIONALS };
 
 struct arg {
   enum kind kind;
   char *name;
   int short_name; /* 0 when none */
-  int is_int;
+  int int_bits; /* 32 or 64 for integers, 0 for strings */
   int min, max; /* positionals; max -1 for no limit */
   /* What was found. */
   int count;
@@ -71,8 +71,8 @@ static void json_string(const char *s) {
 }
 
 static enum kind kind_named(const char *word) {
-  static const char *names[] = {"flag", "count", "negatable", "option", "required", "repeated", "positional", "positionals"};
-  for (int i = 0; i < 8; i++) {
+  static const char *names[] = {"flag", "count", "negatable", "on", "option", "required", "repeated", "positional", "positionals"};
+  for (int i = 0; i < 9; i++) {
     if (strcmp(word, names[i]) == 0) return (enum kind)i;
   }
   fprintf(stderr, "unknown kind %s\n", word);
@@ -101,21 +101,23 @@ static void read_spec(char *text) {
     a->kind = kind_named(words[0]);
     a->name = words[1];
     a->short_name = n > 2 && strcmp(words[2], "-") != 0 ? words[2][0] : 0;
-    a->is_int = n > 3 && strcmp(words[3], "int") == 0;
+    a->int_bits = n < 4 ? 0 : strcmp(words[3], "int") == 0 ? 32 : strcmp(words[3], "int64") == 0 ? 64 : 0;
+    /* A flag that's on is set until --no-NAME. */
+    a->count = a->kind == ON;
     a->min = n > 4 ? atoi(words[4]) : 0;
     a->max = n > 5 && strcmp(words[5], "-") != 0 ? atoi(words[5]) : -1;
   }
 }
 
-static void check_int(const char *text) {
+static void check_int(const char *text, int bits) {
   char *end;
   errno = 0;
-  long n = strtol(text, &end, 10);
-  if (*text == '\0' || *end != '\0' || errno || n < INT_MIN || n > INT_MAX) fail("invalidValue");
+  long long n = strtoll(text, &end, 10);
+  if (*text == '\0' || *end != '\0' || errno || (bits == 32 && (n < INT_MIN || n > INT_MAX))) fail("invalidValue");
 }
 
 static void take_value(struct arg *a, char *value) {
-  if (a->is_int) check_int(value);
+  if (a->int_bits) check_int(value, a->int_bits);
   if (a->kind == REPEATED) {
     a->values[a->n_values++] = value;
   } else {
@@ -143,7 +145,7 @@ static struct command *parse(struct command *c, int argc, char **argv, int *rest
     if (a->kind == POSITIONAL || a->kind == POSITIONALS) continue;
     int takes = a->kind == OPTION || a->kind == REQUIRED || a->kind == REPEATED;
     longs[n_longs++] = (struct option){a->name, takes ? required_argument : no_argument, NULL, FIRST_VAL + 2 * i};
-    if (a->kind == NEGATABLE) {
+    if (a->kind == NEGATABLE || a->kind == ON) {
       char *no = malloc(strlen(a->name) + 4);
       sprintf(no, "no-%s", a->name);
       longs[n_longs++] = (struct option){no, no_argument, NULL, FIRST_VAL + 2 * i + 1};
@@ -189,7 +191,8 @@ static struct command *parse(struct command *c, int argc, char **argv, int *rest
     switch (a->kind) {
       case FLAG: a->count = 1; break;
       case COUNT: a->count++; break;
-      case NEGATABLE: a->count = found >= FIRST_VAL && (found - FIRST_VAL) % 2 ? 0 : 1; break;
+      case NEGATABLE:
+      case ON: a->count = found >= FIRST_VAL && (found - FIRST_VAL) % 2 ? 0 : 1; break;
       default: take_value(a, optarg); break;
     }
   }
@@ -226,7 +229,7 @@ static struct command *parse(struct command *c, int argc, char **argv, int *rest
         int more = a->max < 0 ? extra : a->max - a->min < extra ? a->max - a->min : extra;
         extra -= more;
         for (int k = 0; k < a->min + more; k++) {
-          if (a->is_int) check_int(argv[optind]);
+          if (a->int_bits) check_int(argv[optind], a->int_bits);
           a->values[a->n_values++] = argv[optind++];
         }
       }
@@ -246,20 +249,21 @@ static void print_value(struct arg *a) {
   printf(": ");
   switch (a->kind) {
     case FLAG:
-    case NEGATABLE: printf(a->count ? "true" : "false"); break;
+    case NEGATABLE:
+    case ON: printf(a->count ? "true" : "false"); break;
     case COUNT: printf("%d", a->count); break;
     case REPEATED:
     case POSITIONALS:
       putchar('[');
       for (int k = 0; k < a->n_values; k++) {
         if (k) printf(", ");
-        if (a->is_int) printf("%s", a->values[k]); else json_string(a->values[k]);
+        if (a->int_bits) printf("%lld", strtoll(a->values[k], NULL, 10)); else json_string(a->values[k]);
       }
       putchar(']');
       break;
     default:
       if (!a->value) printf("null");
-      else if (a->is_int) printf("%ld", strtol(a->value, NULL, 10));
+      else if (a->int_bits) printf("%lld", strtoll(a->value, NULL, 10));
       else json_string(a->value);
   }
 }

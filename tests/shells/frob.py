@@ -30,7 +30,13 @@ class Branches(Completer):
     """Values found when the program runs, as from a repository."""
 
     def complete(self, partial):
-        return [Candidate("main", "The default branch."), Candidate("dev"), Candidate("docs")]
+        return [
+            Candidate("main", "The default branch."),
+            Candidate("dev"),
+            Candidate("docs"),
+            Candidate("my work", "Work in progress."),
+            Candidate("it's"),
+        ]
 
 
 def command(style):

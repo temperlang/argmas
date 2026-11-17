@@ -56,10 +56,10 @@ when (cli.parse(argv, env)) {
 - Settings are object literals (property bags), Temper's way of naming
   arguments; backends without named arguments get builders, as elsewhere
   in Temper's output.
-- Value types are small parser objects (`ints`, `floats`, `strings`,
-  `paths`, `directories`, and `choices([...])` so far; `duration`
-  later; and user-defined ones through the `ValueType` interface),
-  each with its own error messages and completions.
+- Value types are small parser objects (`ints`, `ints64`, `floats`,
+  `strings`, `paths`, `directories`, and `choices([...])` so far;
+  `duration` later; and user-defined ones through the `ValueType`
+  interface), each with its own error messages and completions.
 - The environment comes in through an `Environment` interface the
   program implements (or `MapEnvironment` over a map), so parsing
   touches nothing outside.
@@ -121,8 +121,8 @@ when (args.command) {
 
 - **Short and long options:** `-v`, `-vvv` (counted), `-abc` (bundled),
   `-o file` and `-ofile`, `--output file` and `--output=file`,
-  `--no-color` for negatable flags, unique prefixes of long options only
-  if enabled.
+  `--no-color` for negatable flags, flags that are on unless turned
+  off, and no prefixes of long options.
 - **`--`** ends options; everything after is positional.
 - **Repeated options** collect into lists, or the last wins, as declared.
 - **Environment fallbacks:** an option may name an environment variable
@@ -171,8 +171,26 @@ Each corner case gets one decision, written down here, and a test
   false (a counted flag back to 0); the last of `--color` and
   `--no-color` wins. For other names it's an unknown option whose
   message says so.
-- **No prefix matching** of long options; `--verb` is unknown, though
-  the error suggests `--verbose`.
+- **No prefix matching** of long options (decided 2026-11-17), with no
+  setting to turn it on: `--verb` is unknown, though the error suggests
+  `--verbose`. A prefix that works today breaks when a later version
+  adds an option with the same start (`--verb` once `--verbatim`
+  comes), and scripts written against one version end up depending on
+  it; a setting would bring that back for every program that turns it
+  on. clap agrees by default; getopt_long and argparse take unique
+  prefixes, as the [reference tests](#testing) show
+  (`tests/reference/differences.toml`).
+- **Flags that are on** (`on: true` in `FlagSpec`, decided
+  2026-11-17), for `--no-color` style flags: true when not given,
+  `--no-NAME` turns them off, and `--NAME` back on, the last given
+  winning, as with argparse's `BooleanOptionalAction` with
+  `default=True`. They're negatable whether `negatable` is set or not,
+  since otherwise only an environment variable could turn them off;
+  their environment variable sets them either way, as for other flags.
+  A counted flag can't be `on` (a spec mistake). A setting rather than
+  a method, since it doesn't change the value's type, and `on` rather
+  than `default`, a keyword in C++, C#, and Java and the name of
+  Rust's `Default` trait's method.
 - **Suggestions:** the one name the typed name is a prefix of, or else
   the nearest by edit distance (a swap of neighbors counts as one edit,
   so `--hlep` finds `--help`), within a third of the typed length (at
@@ -201,7 +219,9 @@ Each corner case gets one decision, written down here, and a test
   `invalidSpec` error, not a panic where they're declared, so a spec
   with one can't ship unnoticed: its first run fails.
 - **Values** (`src/values-tests.temper.md`): `ints` takes an optional
-  sign and ASCII digits, leading zeros allowed, within 32 bits; `floats`
+  sign and ASCII digits, leading zeros allowed, within 32 bits, and
+  `ints64` the same within 64 bits, as `Int64`, each range checked by
+  Argmas rather than each language's conversion; `floats`
   takes an optional sign, digits with an optional point and fraction
   (`.5` and `5.` too), and an optional exponent, finite only; `choices`
   match exactly, case included.
@@ -210,7 +230,8 @@ Each corner case gets one decision, written down here, and a test
   two fifths of the width in (and at least 16); longer names put their
   help on the next line; notes (`[default: 3]`, `[env: X]`,
   `[choices: a, b]`, `[required]`, `[repeatable]`) are never split; a
-  negatable flag shows as `--[no-]color`.
+  negatable flag shows as `--[no-]color`, and one that's on adds
+  `[default: on]`.
 - **Error text:** `frob: <message>`, then the usage, then
   `Try 'frob --help' for more information.` when `--help` is built in.
 
@@ -444,8 +465,9 @@ Decisions, each tested in `src/complete-tests.temper.md` and
 - **Options in styles:** each option in each of the command's styles:
   in `gnu`, `-v` and `--verbose`; in `singleDash` and `windows`, the
   prefix typed is kept (`-name`, `--name`, or `/name`, `/` when
-  nothing is typed); `no-` forms of negatable flags; inherited options;
-  and the built-ins (`--help`, `-h`, `/?`, `--version`,
+  nothing is typed); `no-` forms of negatable flags, described as
+  undoing the flag, or for a flag that's on, turning it off; inherited
+  options; and the built-ins (`--help`, `-h`, `/?`, `--version`,
   `--completions`). `windows` names match ignoring case. A `/word` in
   `windows` gets the positional argument's values (paths) too, since
   it may be one.
@@ -495,6 +517,18 @@ Decisions, each tested in `src/complete-tests.temper.md` and
   `~/.config/fish/completions/frob.fish`, and the PowerShell profile,
   warning against saving it as `frob.ps1` on `PATH`, which PowerShell
   would run for `frob` ahead of `frob.exe` or `frob.cmd`.
+- **Quotes on the line** (decided 2026-11-17): the program gets each
+  word as the command will, without the quotes and backslashes typed
+  (`frob --name "a b<Tab>` asks about `a b`), and the shell quotes
+  what it inserts as needed (`a\ b`, or `"a b"`, closing an open
+  quote). bash leaves both to the script: it removes quotes as bash
+  will, without expanding `~` or variables, and when the word has an
+  open quote or a candidate needs quoting, it says the candidates are
+  file names (`compopt -o filenames`), the one way bash quotes what it
+  inserts, for Tab and `insert-completions` alike. zsh (`(Q)`) and
+  PowerShell (string values) already unquote, and fish's earlier
+  words are; its script unquotes the word being completed with
+  `string unescape`. All four shells quote what they insert.
 - **Not supported:** `cmd.exe`, which has no programmable completion.
 
 ## Messages
@@ -572,6 +606,7 @@ written as a comment line.
 | `help.options` | Options: |
 | `help.aliases` | [aliases: {aliases}] |
 | `help.default` | [default: {value}] |
+| `help.on` | [default: on] |
 | `help.env` | [env: {name}] |
 | `help.choices` | [choices: {choices}] |
 | `help.required` | [required] |
@@ -583,6 +618,7 @@ written as a comment line.
 | `builtin.completionsValue` | SHELL |
 | `version` | {command} {version} |
 | `complete.negate` | Undo {option}. |
+| `complete.turnOff` | Turn off {option}. |
 | `complete.completions` | Print a completion script for a shell and exit. |
 | `script.bash` | bash completion for {program}, generated by Argmas. Then where to save it, on more lines. |
 | `script.zsh` | zsh completion for {program}, generated by Argmas. Then where to save it, on more lines. |
@@ -648,7 +684,10 @@ written as a comment line.
   differences are deliberate: no prefix matching, no option read as a
   separate value, negative numbers as values, `-o=file` as `file`,
   options after positional arguments, the last of a repeated option
-  winning, and help winning over errors.
+  winning, help winning over errors, and integers kept within 32 or 64
+  bits. Flags that are on match argparse's `BooleanOptionalAction`
+  with `default=True`, getopt_long's usual flag variable set to 1, and
+  clap's `--no-NAME` read as false.
 - **Help and errors:** goldens of the exact text, in English and with
   a program's own messages, including a partial German table kept as
   a test fixture, not a translation.
@@ -720,11 +759,10 @@ the API, and the choice made for each:
 
 ## Open questions
 
-- Completions: quotes typed on a bash line reach the program as typed;
-  whether to unquote them. PowerShell falls back to paths when nothing
-  is offered; whether to stop it (Cobra adds a dummy candidate). The
-  zsh, fish, and PowerShell scripts haven't been driven in their
-  shells here yet.
+- Completions: PowerShell falls back to paths when nothing is offered;
+  whether to stop it (Cobra adds a dummy candidate). The zsh, fish,
+  and PowerShell scripts haven't been driven in their shells here yet,
+  only in CI.
 - A declared default subcommand, decided against for now; revisit if
   `commandOptional` proves awkward.
 - `args.within(cmd)`, true when `cmd` or a subcommand under it ran,
@@ -736,17 +774,12 @@ the API, and the choice made for each:
   `eq` method rather than to the language's own equality. That's a
   planned tempest fix, so Argmas keeps `==` rather than adding a
   method such as `args.ran(add)`.
-- A flag that defaults to true, for `--no-color` style flags: today a
-  flag is false unless given or set by its environment variable.
-- Options taking `Int64` values.
 - Help counts columns in code points, so wide characters (most Chinese,
   Japanese, and Korean ones) take more room than counted.
 - Value types beyond the basics: dates and durations need a format; paths
   need per-platform rules (Windows drive letters, `~`).
 - Whether `parseInto` with `@json` covers enough, or a result type per
   command is better.
-- Prefix matching of long options: off by default (it breaks when options
-  are added), on by choice?
 - Config files (TOML, INI) as another layer under the environment, or out
   of scope.
 - How much terminal handling (color, width) belongs here, and how much in
@@ -761,9 +794,8 @@ In this order, as agreed (2026-11-16):
    from main; per-language tabs for the examples beyond the tour later).
 3. Testing against reference parsers (done: `getopt_long`, argparse,
    and clap, in `tests/reference/`).
-4. Small open items: flags that default to true, `Int64` values, the
-   decision on prefix matching, and unquoting on bash lines in
-   completions.
+4. Small open items (done: flags that are `on`, `ints64`, no prefix
+   matching, and unquoting on the line in completions).
 5. `parseInto` with `@json`, or a result type per command.
 
 Later: display width, date, duration, and path value types,

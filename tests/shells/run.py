@@ -42,14 +42,17 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+# The shells whose quoting is POSIX's, near enough.
+UNIX = ("bash", "zsh", "fish")
 HERE = Path(__file__).resolve().parent
 WINDOWS = os.name == "nt"
 OUT = ROOT / "temper.out" / "py"
 
-# Command lines, with the cursor at the end, and what should be offered.
-# Paths are compared without a leading `./` or trailing `/`, which shells
-# add in their own ways. The working directory holds alpha.txt,
-# gamma.txt, and the directory beta.
+# Command lines, with the cursor at the end, what should be offered,
+# and, for some, the shells they're for (all when not given). Paths are
+# compared without a leading `./` or trailing `/`, which shells add in
+# their own ways. The working directory holds alpha.txt, gamma.txt,
+# "delta file.txt", and the directory beta.
 CASES = [
     ("frob --ver", ["--verbose", "--version"]),
     ("frob --mode ", ["fast", "slow"]),
@@ -67,14 +70,67 @@ CASES = [
     ("frob --out=g", ["--out=gamma.txt"]),
     ("windows: frob /ver", ["/verbose", "/version"]),
     ("windows: frob /mode:s", ["/mode:slow"]),
+    # Quotes and backslashes typed on the line: the program gets the
+    # words without them, and the shell quotes what it inserts. Backslash
+    # escapes aren't PowerShell's, nor is '' for ' inside single quotes.
+    ('frob --branch "my', ["my work"]),
+    ("frob --branch 'my w", ["my work"]),
+    ("frob --branch my\\ w", ["my work"], UNIX),
+    ("frob --branch=my\\ w", ["--branch=my work"], UNIX),
+    ("frob --branch 'it", ["it's"], UNIX),
+    ("frob --branch it", ["it's"], UNIX),
+    ('frob "--mode" s', ["slow"]),
+    ("frob --mode 'f", ["fast"]),
+    ('frob add "del', ["delta file.txt"]),
+    ("frob add del", ["delta file.txt"]),
+    ('frob --out="del', ["--out=delta file.txt"]),
+    ("frob --out=del", ["--out=delta file.txt"]),
 ]
 
 SHELLS = {"bash": "bash", "zsh": "zsh", "fish": "fish", "powershell": "pwsh"}
 
 
-def normalized(candidates):
+def cases_for(shell):
+    """The cases for one shell, as (line, expected) pairs."""
+    return [(case[0], case[1]) for case in CASES if len(case) < 3 or shell in case[2]]
+
+
+def typed_words(line):
+    """A line's words as a POSIX shell reads them, without quotes and
+    backslashes, allowing an open quote at the end."""
+    words, word, quote, started = [], "", None, False
+    chars = iter(line)
+    for c in chars:
+        if quote:
+            if c == quote:
+                quote = None
+            elif quote == '"' and c == "\\":
+                word += next(chars, "")
+            else:
+                word += c
+        elif c.isspace():
+            if started:
+                words.append(word)
+            word, started = "", False
+        else:
+            started = True
+            if c in "'\"":
+                quote = c
+            elif c == "\\":
+                word += next(chars, "")
+            else:
+                word += c
+    if started:
+        words.append(word)
+    return words
+
+
+def normalized(candidates, shell=None):
     out = set()
     for c in candidates:
+        if shell == "fish":
+            # fish shows candidates as it would insert them, escaped.
+            c = re.sub(r"\\(.)", r"\1", c)
         c = c.strip().strip("'\"")
         c = re.sub(r"(^|[=:])\.[/\\]", r"\1", c)
         c = c.rstrip("/\\")
@@ -135,13 +191,13 @@ class Pty:
 ANSI = re.compile(r"\x1b(\[[0-9;?]*[ -/]*[@-~]|[()][0-9A-Za-z]|[=>]|\][^\x07]*\x07)")
 
 
-def drive_bash(work, env):
+def drive_bash(work, env, cases):
     script = script_path(work, "bash")
     shell = Pty(["bash", "--norc", "--noprofile", "-i"], {**env, "INPUTRC": str(work.parent / "inputrc")}, work)
     shell.send(f"PS1='' PS2=''; source {shlex.quote(str(script))}; echo READY''\r")
     shell.until("READY\r\n")
     results = []
-    for n, (case, _) in enumerate(CASES):
+    for n, (case, _) in enumerate(cases):
         line, extra = split_case(case)
         exports = "".join(f"export {k}={v}; " for k, v in extra.items()) or "unset FROB_STYLE; "
         shell.send(f"{exports}echo BEGIN{n}''\r")
@@ -151,7 +207,7 @@ def drive_bash(work, env):
         shell.send(f"echo END{n}''\r")
         text = ANSI.sub("", shell.until(f"END{n}\r\n"))
         words = re.findall(r"^<(.*)>\r?$", text, re.M)
-        before = len(line.split()) - (0 if line.endswith(" ") else 1)
+        before = len(typed_words(line)) - (0 if line.endswith(" ") else 1)
         results.append(words[before:])
     shell.close()
     return results
@@ -161,7 +217,7 @@ def drive_bash(work, env):
 ZLE_READY = "<ZLE-READY>"
 
 
-def drive_zsh(work, env):
+def drive_zsh(work, env, cases):
     script = script_path(work, "zsh")
     shell = Pty(["zsh", "-f", "-i"], env, work)
     shell.send(
@@ -171,7 +227,7 @@ def drive_zsh(work, env):
     )
     shell.until("READY\r\n")
     results = []
-    for n, (case, _) in enumerate(CASES):
+    for n, (case, _) in enumerate(cases):
         line, extra = split_case(case)
         exports = "".join(f"export {k}={v}; " for k, v in extra.items()) or "unset FROB_STYLE; "
         shell.send(f"{exports}echo BEGIN{n}''\r")
@@ -190,12 +246,13 @@ def drive_zsh(work, env):
         for row in text.replace("\r", "").split("\n"):
             if not row.strip() or line.strip() in row or "echo END" in row or ZLE_READY in row:
                 continue
-            # `value  -- description` from _describe, or columns of values.
-            found.extend(row.split(" -- ")[0].split())
+            # `value  -- description` from _describe, or columns of values,
+            # apart by two spaces or more, since a value may hold one.
+            found.extend(re.split(r" {2,}", row.split(" -- ")[0].strip()))
         # zsh lists paths without the part of the word the script keeps
         # in front of them (`--out=` in `--out=g`), as it does for any
         # command, though it completes the whole word.
-        word = "" if line.endswith(" ") else line.split()[-1]
+        word = "" if line.endswith(" ") else typed_words(line)[-1]
         kept = re.match(r"(.*?[=:])", word)
         if kept:
             found = [f if f.startswith(kept[1]) else kept[1] + f for f in found]
@@ -204,10 +261,10 @@ def drive_zsh(work, env):
     return results
 
 
-def drive_fish(work, env):
+def drive_fish(work, env, cases):
     script = script_path(work, "fish")
     results = []
-    for case, _ in CASES:
+    for case, _ in cases:
         line, extra = split_case(case)
         command = f"source {shlex.quote(str(script))}; complete -C {shlex.quote(line)}"
         out = subprocess.run(
@@ -226,10 +283,10 @@ PWSH = ["pwsh", "-NoProfile", "-NonInteractive"] + (["-ExecutionPolicy", "Bypass
 POWERSHELL_STDERR = {}
 
 
-def drive_powershell(work, env):
+def drive_powershell(work, env, cases):
     script = script_path(work, "powershell")
     results = []
-    for case, _ in CASES:
+    for case, _ in cases:
         line, extra = split_case(case)
         command = (
             f". '{script}'; "
@@ -365,6 +422,7 @@ def main():
             frob.chmod(0o755)
         (work / "alpha.txt").write_text("")
         (work / "gamma.txt").write_text("")
+        (work / "delta file.txt").write_text("")
         (work / "beta").mkdir()
         (bin_dir / "inputrc").write_text("set bell-style none\nset enable-bracketed-paste off\n")
         # Windows programs need some of the system's variables, such as
@@ -388,21 +446,22 @@ def main():
                 [str(frob), "--completions", shell], env=env, capture_output=True, text=True, check=True
             ).stdout
             script_path(work, shell).write_text(script)
+            cases = cases_for(shell)
             try:
-                results = DRIVERS[shell](work, env)
+                results = DRIVERS[shell](work, env, cases)
             except (RuntimeError, OSError, subprocess.SubprocessError) as error:
                 print(f"{shell}: error: {error}")
                 failed = True
                 continue
             bad = 0
-            for (case, expected), got in zip(CASES, results):
-                if normalized(got) != sorted(expected):
+            for (case, expected), got in zip(cases, results):
+                if normalized(got, shell) != sorted(expected):
                     bad += 1
-                    print(f"{shell}: {case!r}: expected {sorted(expected)}, got {normalized(got)}")
+                    print(f"{shell}: {case!r}: expected {sorted(expected)}, got {normalized(got, shell)}")
                     if shell == "powershell":
                         for row in diagnose_powershell(work, env, case):
                             print(f"    {row}")
-            print(f"{shell}: {len(CASES) - bad} of {len(CASES)} cases match")
+            print(f"{shell}: {len(cases) - bad} of {len(cases)} cases match")
             failed = failed or bad > 0
     sys.exit(1 if failed else 0)
 

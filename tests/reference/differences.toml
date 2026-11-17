@@ -13,8 +13,8 @@
 # unless infer_long_args is set), since a prefix that works today
 # breaks when a later version adds an option with the same start, and
 # scripts end up depending on it. It suggests the name
-# instead ("unknown option --verb; did you mean --verbose?"). Whether to
-# offer prefixes as a setting is an open item in docs/design.md.
+# instead ("unknown option --verb; did you mean --verbose?"). That's
+# decided, with no setting to turn prefixes on (docs/design.md).
 
 [[difference]]
 case = "prefix-unique"
@@ -51,6 +51,18 @@ case = "prefix-ambiguous"
 parser = "argparse"
 gives = "error: ambiguousOption"
 why = "an error either way; without prefix matching, Argmas has no ambiguous options, only unknown ones"
+
+[[difference]]
+case = "prefix-negation"
+parser = "getopt"
+gives = { pager = false }
+why = "getopt_long takes a unique prefix of --no-pager too; Argmas doesn't match prefixes"
+
+[[difference]]
+case = "prefix-negation"
+parser = "argparse"
+gives = { pager = false }
+why = "argparse takes a unique prefix of --no-pager too, unless allow_abbrev=False; Argmas doesn't match prefixes"
 
 [[difference]]
 case = "long-empty-name"
@@ -131,6 +143,12 @@ case = "negative-value-short"
 parser = "clap"
 gives = "error: unknownOption"
 why = "clap reads -5 as an option unless allow_negative_numbers is set; Argmas takes negative numbers as values, as argparse does"
+
+[[difference]]
+case = "int64-negative-separate"
+parser = "clap"
+gives = "error: unknownOption"
+why = "clap reads -5000000000 as an option unless allow_negative_numbers is set; Argmas takes negative numbers as values, as argparse does"
 
 [[difference]]
 case = "negative-string-value"
@@ -240,14 +258,27 @@ parser = "clap"
 gives = "error: missingRequired"
 why = "clap names --output and FILE in one message; Argmas reports positional counts before missing required options"
 
-# 32-bit integers. Argmas's ints are 32-bit in every language; argparse's
-# int is unbounded. (Int64 values are an open item in docs/design.md.)
+# Integers' range. Argmas's ints are 32-bit and its ints64 64-bit in
+# every language, as getopt.c's and clap's are here; argparse's int is
+# unbounded.
 
 [[difference]]
 case = "long-int-too-big"
 parser = "argparse"
 gives = { level = 99999999999 }
 why = "Python's int is unbounded; Argmas's ints are 32-bit in every language"
+
+[[difference]]
+case = "int64-too-big"
+parser = "argparse"
+gives = { size = 9223372036854775808 }
+why = "Python's int is unbounded; Argmas's ints64 are 64-bit in every language"
+
+[[difference]]
+case = "int64-too-small"
+parser = "argparse"
+gives = { size = -9223372036854775809 }
+why = "Python's int is unbounded; Argmas's ints64 are 64-bit in every language"
 
 # `--` before a subcommand. In Argmas, no word after `--` selects a
 # subcommand, so `git -- add` has none (and an extra positional

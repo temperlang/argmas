@@ -2,9 +2,9 @@
 
 An option's or positional argument's value arrives as text. A *value
 type* turns that text into a typed value, or says what it expected
-instead, for the error message. Argmas has `ints`, `floats`, `strings`,
-`paths`, `directories`, and `choices([...])`; any other type implements
-`ValueType`.
+instead, for the error message. Argmas has `ints`, `ints64`, `floats`,
+`strings`, `paths`, `directories`, and `choices([...])`; any other
+type implements `ValueType`.
 
     export interface ValueType<T> {
 
@@ -68,33 +68,78 @@ errors, the same in every language.
       public expectedIn(messages: MessageTable): String { messages.text("expected.integer") }
 
       public parse(text: String): Int throws Bubble {
-        let digits = new StringBuilder();
-        var negative = false;
-        var seenDigit = false;
-        var significant = false;
-        for (var i = String.begin; text.hasIndex(i); i = text.next(i)) {
-          let c = text[i];
-          if (i == String.begin && (c == char'-' || c == char'+')) {
-            negative = c == char'-';
-          } else if (c >= char'0' && c <= char'9') {
-            seenDigit = true;
-            if (c != char'0' || significant) {
-              significant = true;
-              digits.appendCodePoint(c) orelse panic();
-            }
-          } else {
-            bubble();
-          }
-        }
-        if (!seenDigit) { bubble() }
-        let magnitude = digits.toString();
-        if (magnitude.isEmpty) { return 0; }
-        // Ten digits at most fit, and toInt32 checks the range.
-        if (magnitude.hasAtLeast(String.begin, magnitude.end, 11)) { bubble() }
-        (if (negative) { "-${magnitude}" } else { magnitude }).toInt32()
+        integerText(text, "2147483647", "2147483648").toInt32()
       }
 
       public format(value: Int): String { value.toString() }
+    }
+
+`ints64` takes the same text for integers that fit in 64 bits, from
+-9223372036854775808 to 9223372036854775807, as `Int64` values, for
+sizes, timestamps, and other numbers past 32 bits.
+
+    export let ints64: ValueType<Int64> = new Int64Type();
+
+    class Int64Type extends ValueType<Int64> {
+      public get expected(): String { expectedIn(new MessageTable()) }
+      public expectedIn(messages: MessageTable): String { messages.text("expected.integer") }
+
+      public parse(text: String): Int64 throws Bubble {
+        integerText(text, "9223372036854775807", "9223372036854775808").toInt64()
+      }
+
+      public format(value: Int64): String { value.toString() }
+    }
+
+Both check the text and its range here, rather than leaving the range
+to each language's conversion, so every language agrees on the edges.
+`integerText` gives the integer in JSON's syntax (no `+`, no leading
+zeros), which `toInt32` and `toInt64` read the same everywhere, when
+its magnitude is at most `most` (or `mostNegative` with a `-`), and
+bubbles otherwise.
+
+    let integerText(text: String, most: String, mostNegative: String): String throws Bubble {
+      let digits = new StringBuilder();
+      var negative = false;
+      var seenDigit = false;
+      var significant = false;
+      for (var i = String.begin; text.hasIndex(i); i = text.next(i)) {
+        let c = text[i];
+        if (i == String.begin && (c == char'-' || c == char'+')) {
+          negative = c == char'-';
+        } else if (isDigit(c)) {
+          seenDigit = true;
+          if (c != char'0' || significant) {
+            significant = true;
+            digits.appendCodePoint(c) orelse panic();
+          }
+        } else {
+          bubble();
+        }
+      }
+      if (!seenDigit) { bubble() }
+      let magnitude = digits.toString();
+      if (magnitude.isEmpty) { return "0"; }
+      if (!atMost(magnitude, if (negative) { mostNegative } else { most })) { bubble() }
+      if (negative) { "-${magnitude}" } else { magnitude }
+    }
+
+Whether one magnitude, in digits without leading zeros, is at most
+another: fewer digits, or as many and none greater at the first that
+differs.
+
+    let atMost(digits: String, limit: String): Boolean {
+      let length = codePointCount(digits);
+      let limitLength = codePointCount(limit);
+      if (length != limitLength) { return length < limitLength; }
+      var i = String.begin;
+      var j = String.begin;
+      while (digits.hasIndex(i)) {
+        if (digits[i] != limit[j]) { return digits[i] < limit[j]; }
+        i = digits.next(i);
+        j = limit.next(j);
+      }
+      true
     }
 
 ## Floats

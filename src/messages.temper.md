@@ -241,6 +241,11 @@ joined with `list.separator`.
 
       new Pair("help.aliases", "[aliases: {aliases}]"),
       new Pair("help.default", "[default: {value}]"),
+
+A flag that is on when not given, such as `--[no-]color`, as a whole
+note, so a translation can say "on" its own way.
+
+      new Pair("help.on", "[default: on]"),
       new Pair("help.env", "[env: {name}]"),
       new Pair("help.choices", "[choices: {choices}]"),
       new Pair("help.required", "[required]"),
@@ -264,9 +269,11 @@ its version.
 ### Completions
 
 Descriptions of candidates that help doesn't have: `--no-NAME`, which
-undoes `{option}`, and `--completions`.
+undoes `{option}`, or, for a flag that's on when not given, turns it
+off, and `--completions`.
 
       new Pair("complete.negate", "Undo {option}."),
+      new Pair("complete.turnOff", "Turn off {option}."),
       new Pair("complete.completions", "Print a completion script for a shell and exit."),
 
 The comment atop each shell's script, with the program's name in

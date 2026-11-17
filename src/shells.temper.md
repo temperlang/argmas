@@ -111,43 +111,81 @@ The name in single quotes, with each `'` in it written as `escaped`.
 
 ## bash
 
-bash's `COMP_WORDS` splits words at `=` and `:`, so the script reads
-the words from the line itself, up to the cursor, and gives bash back
-only the part after the last `=` or `:` it completes. Quotes typed on
-the line are passed as they are. Files and directories, when nothing
-else is offered, are bash's own completion, as for any command.
+bash's `COMP_WORDS` splits words at `=` and `:` and keeps their
+quotes, so the script reads the words from the line itself, up to the
+cursor, removing quotes and backslashes as bash will when it runs the
+command: `--name "a b` reaches the program as `--name` and `a b`. It
+doesn't expand `~` or variables, which the user hasn't run yet. bash
+replaces only part of the word being completed, the part after an
+open quote, or else after the last `=` or `:` outside quotes, so the
+script gives back only that part of each candidate. bash quotes what
+it inserts only for file names, so when the word has an open quote or
+a candidate has a character the shell would read, such as a space,
+the script says its candidates are file names (`compopt -o
+filenames`): `my work` goes in as `my\ work`, or inside `"my` as
+`"my work"`, closing the quote, whether completed with Tab or all at
+once (`insert-completions`). Files and directories, when nothing else
+is offered, are bash's own completion, as for any command.
 
     let bashScript(header: String, quoted: String, ident: String): String {
       """
         "${header}
         "
         "_${ident}_argmas() {
-        "    local line=\${COMP_LINE:0:COMP_POINT} words=() lines=() files=() i
-        "    read -ra words <<< "$line"
-        "    [[ $line == *[[:space:]] ]] && words+=("")
-        "    local cur=\${words[\${#words[@]}-1]} program=\${words[0]}
+        "    local line=\${COMP_LINE:0:COMP_POINT} words=() word= quote= open=0 started= keep=0 c j
+        "    # bash completes only the part of a word after its last = or :.
+        "    local breaks=\${COMP_WORDBREAKS//[^=:]/}
+        "    # The words as the program gets them, without their quotes and
+        "    # backslashes, noting where in the last bash replaces what's typed:
+        "    # after an open quote, or else after its last = or : outside quotes.
+        "    for (( j = 0; j < \${#line}; j++ )); do
+        "        c=\${line:j:1}
+        "        if [[ $quote == "'" ]]; then
+        "            if [[ $c == "'" ]]; then quote=; else word+=$c; fi
+        "        elif [[ $quote == '"' ]]; then
+        "            if [[ $c == '"' ]]; then
+        "                quote=
+        "            elif [[ $c == '\\' && \${line:j+1:1} == [\\"\\\\\\$\\`] ]]; then
+        "                word+=\${line:j+1:1}
+        "                (( j++ ))
+        "            else
+        "                word+=$c
+        "            fi
+        "        elif [[ $c == [[:space:]] ]]; then
+        "            [[ -n $started ]] && words+=("$word")
+        "            word= started= keep=0
+        "        else
+        "            started=1
+        "            if [[ $c == [\\"\\'] ]]; then
+        "                quote=$c open=\${#word}
+        "            elif [[ $c == '\\' ]]; then
+        "                word+=\${line:j+1:1}
+        "                (( j++ ))
+        "            else
+        "                word+=$c
+        "                [[ -n $breaks && $c == ["$breaks"] ]] && keep=\${#word}
+        "            fi
+        "        fi
+        "    done
+        "    words+=("$word")
+        "    [[ -n $quote ]] && keep=$open
+        "    local cur=$word program=\${words[0]} kept=\${word:0:keep}
         "    [[ $program == "~/"* ]] && program=$HOME/\${program:2}
-        "    local out
+        "    local out lines=() files=() found=() i quoted
         "    out=$("$program" __complete $(( \${#words[@]} - 2 )) "\${words[@]:1}" 2>/dev/null) || return 0
         "    mapfile -t lines <<< "$out"
         "    local directive=\${lines[\${#lines[@]}-1]}
         "    unset 'lines[\${#lines[@]}-1]'
-        "    # bash completes only the part of a word after its last = or :.
-        "    local breaks=\${COMP_WORDBREAKS//[^=:]/} keep=
-        "    if [[ -n $breaks && $cur == *["$breaks"]* ]]; then
-        "        keep=\${cur%"\${cur##*["$breaks"]}"}
-        "    fi
-        "    COMPREPLY=()
         "    for i in "\${lines[@]}"; do
         "        i=\${i%%$'\\t'*}
-        "        [[ -n $i && $i == "$keep"* ]] && COMPREPLY+=("\${i#"$keep"}")
+        "        [[ -n $i && $i == "$kept"* ]] && found+=("\${i:keep}")
         "    done
         "    case $directive in
         "    :files*|:directories*)
         "        local prefix= option=-f
         "        [[ $directive == *" "* ]] && prefix=\${directive#* }
         "        [[ $directive == :directories* ]] && option=-d
-        "        if [[ -z $prefix && \${#COMPREPLY[@]} -eq 0 ]]; then
+        "        if [[ -z $prefix && \${#found[@]} -eq 0 ]]; then
         "            if [[ $option == -f ]]; then compopt -o default; else compopt -o dirnames; fi
         "            return 0
         "        fi
@@ -155,10 +193,21 @@ else is offered, are bash's own completion, as for any command.
         "        mapfile -t files < <(compgen "$option" -- "\${cur#"$prefix"}")
         "        for i in "\${files[@]}"; do
         "            i=$prefix$i
-        "            [[ $i == "$keep"* ]] && COMPREPLY+=("\${i#"$keep"}")
+        "            [[ $i == "$kept"* ]] && found+=("\${i:keep}")
         "        done
         "        ;;
         "    esac
+        "    # bash quotes what it inserts, closing an open quote, when told the
+        "    # candidates are file names, as files are; others need that only in
+        "    # a quote or when the shell would read some character in them.
+        "    for i in "\${found[@]}"; do
+        "        printf -v quoted %q "$i"
+        "        if [[ -n $quote || $quoted != "$i" ]]; then
+        "            compopt -o filenames
+        "            break
+        "        fi
+        "    done
+        "    COMPREPLY=("\${found[@]}")
         "    return 0
         "}
         "
@@ -217,7 +266,10 @@ sourced after `compinit`; candidates and their descriptions go through
 ## fish
 
 fish reads `candidate<TAB>description` lines itself, so the script
-mostly passes them on.
+mostly passes them on, and fish quotes them as it inserts them. Its
+`commandline -opc` gives the words before the one being completed
+without their quotes, and the script removes that word's own with
+`string unescape`, closing an open quote first.
 
     let fishScript(header: String, quoted: String, ident: String): String {
       """
@@ -226,6 +278,16 @@ mostly passes them on.
         "function __${ident}_argmas
         "    set -l words (commandline -opc)
         "    set -l current (commandline -ct)
+        "    # The word being completed as the program gets it, without its
+        "    # quotes and backslashes, as the other words already are; an open
+        "    # quote is closed first.
+        "    set -l unquoted
+        "    for closing in '' '"' "'"
+        "        if set unquoted (string unescape -- "$current$closing" 2>/dev/null)
+        "            set current "$unquoted"
+        "            break
+        "        end
+        "    end
         "    set -l arguments $words
         "    set -e arguments[1]
         "    set -l lines ($words[1] __complete (count $arguments) $arguments $current 2>/dev/null)

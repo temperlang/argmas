@@ -16,32 +16,60 @@ so a change to one shows in review. The scripts run in real shells in
         "# ~/.bashrc. Needs bash 4.4 or later.
         "
         "_frob_argmas() {
-        "    local line=\${COMP_LINE:0:COMP_POINT} words=() lines=() files=() i
-        "    read -ra words <<< "$line"
-        "    [[ $line == *[[:space:]] ]] && words+=("")
-        "    local cur=\${words[\${#words[@]}-1]} program=\${words[0]}
+        "    local line=\${COMP_LINE:0:COMP_POINT} words=() word= quote= open=0 started= keep=0 c j
+        "    # bash completes only the part of a word after its last = or :.
+        "    local breaks=\${COMP_WORDBREAKS//[^=:]/}
+        "    # The words as the program gets them, without their quotes and
+        "    # backslashes, noting where in the last bash replaces what's typed:
+        "    # after an open quote, or else after its last = or : outside quotes.
+        "    for (( j = 0; j < \${#line}; j++ )); do
+        "        c=\${line:j:1}
+        "        if [[ $quote == "'" ]]; then
+        "            if [[ $c == "'" ]]; then quote=; else word+=$c; fi
+        "        elif [[ $quote == '"' ]]; then
+        "            if [[ $c == '"' ]]; then
+        "                quote=
+        "            elif [[ $c == '\\' && \${line:j+1:1} == [\\"\\\\\\$\\`] ]]; then
+        "                word+=\${line:j+1:1}
+        "                (( j++ ))
+        "            else
+        "                word+=$c
+        "            fi
+        "        elif [[ $c == [[:space:]] ]]; then
+        "            [[ -n $started ]] && words+=("$word")
+        "            word= started= keep=0
+        "        else
+        "            started=1
+        "            if [[ $c == [\\"\\'] ]]; then
+        "                quote=$c open=\${#word}
+        "            elif [[ $c == '\\' ]]; then
+        "                word+=\${line:j+1:1}
+        "                (( j++ ))
+        "            else
+        "                word+=$c
+        "                [[ -n $breaks && $c == ["$breaks"] ]] && keep=\${#word}
+        "            fi
+        "        fi
+        "    done
+        "    words+=("$word")
+        "    [[ -n $quote ]] && keep=$open
+        "    local cur=$word program=\${words[0]} kept=\${word:0:keep}
         "    [[ $program == "~/"* ]] && program=$HOME/\${program:2}
-        "    local out
+        "    local out lines=() files=() found=() i quoted
         "    out=$("$program" __complete $(( \${#words[@]} - 2 )) "\${words[@]:1}" 2>/dev/null) || return 0
         "    mapfile -t lines <<< "$out"
         "    local directive=\${lines[\${#lines[@]}-1]}
         "    unset 'lines[\${#lines[@]}-1]'
-        "    # bash completes only the part of a word after its last = or :.
-        "    local breaks=\${COMP_WORDBREAKS//[^=:]/} keep=
-        "    if [[ -n $breaks && $cur == *["$breaks"]* ]]; then
-        "        keep=\${cur%"\${cur##*["$breaks"]}"}
-        "    fi
-        "    COMPREPLY=()
         "    for i in "\${lines[@]}"; do
         "        i=\${i%%$'\\t'*}
-        "        [[ -n $i && $i == "$keep"* ]] && COMPREPLY+=("\${i#"$keep"}")
+        "        [[ -n $i && $i == "$kept"* ]] && found+=("\${i:keep}")
         "    done
         "    case $directive in
         "    :files*|:directories*)
         "        local prefix= option=-f
         "        [[ $directive == *" "* ]] && prefix=\${directive#* }
         "        [[ $directive == :directories* ]] && option=-d
-        "        if [[ -z $prefix && \${#COMPREPLY[@]} -eq 0 ]]; then
+        "        if [[ -z $prefix && \${#found[@]} -eq 0 ]]; then
         "            if [[ $option == -f ]]; then compopt -o default; else compopt -o dirnames; fi
         "            return 0
         "        fi
@@ -49,10 +77,21 @@ so a change to one shows in review. The scripts run in real shells in
         "        mapfile -t files < <(compgen "$option" -- "\${cur#"$prefix"}")
         "        for i in "\${files[@]}"; do
         "            i=$prefix$i
-        "            [[ $i == "$keep"* ]] && COMPREPLY+=("\${i#"$keep"}")
+        "            [[ $i == "$kept"* ]] && found+=("\${i:keep}")
         "        done
         "        ;;
         "    esac
+        "    # bash quotes what it inserts, closing an open quote, when told the
+        "    # candidates are file names, as files are; others need that only in
+        "    # a quote or when the shell would read some character in them.
+        "    for i in "\${found[@]}"; do
+        "        printf -v quoted %q "$i"
+        "        if [[ -n $quote || $quoted != "$i" ]]; then
+        "            compopt -o filenames
+        "            break
+        "        fi
+        "    done
+        "    COMPREPLY=("\${found[@]}")
         "    return 0
         "}
         "
@@ -123,6 +162,16 @@ so a change to one shows in review. The scripts run in real shells in
         "function __frob_argmas
         "    set -l words (commandline -opc)
         "    set -l current (commandline -ct)
+        "    # The word being completed as the program gets it, without its
+        "    # quotes and backslashes, as the other words already are; an open
+        "    # quote is closed first.
+        "    set -l unquoted
+        "    for closing in '' '"' "'"
+        "        if set unquoted (string unescape -- "$current$closing" 2>/dev/null)
+        "            set current "$unquoted"
+        "            break
+        "        end
+        "    end
         "    set -l arguments $words
         "    set -e arguments[1]
         "    set -l lines ($words[1] __complete (count $arguments) $arguments $current 2>/dev/null)

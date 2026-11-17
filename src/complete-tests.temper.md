@@ -79,6 +79,22 @@ word.
       assert(shown(cli.complete(["--x"])) == "(none)");
     }
 
+A flag that's `on` is offered both ways, its `no-` form described as
+turning it off rather than undoing it; once given either way, neither
+is offered, as for other negatable flags.
+
+    test("flags that are on") {
+      let cli = new Command({ name: "c" });
+      cli.flag({ name: "pager", help: "Page the output.", on: true });
+      cli.flag({ name: "color", help: "Color the output.", negatable: true });
+      assert(shown(cli.complete(["--"])) == "--pager --no-pager --color --no-color --help");
+      assert(cli.complete(["--no-"]).text() == "--no-pager\tTurn off --pager.\n--no-color\tUndo --color.\n:none\n");
+      assert(shown(cli.complete(["--no-pager", "--p"])) == "(none)");
+      let windows = new Command({ name: "w", style: Style.windows });
+      windows.flag({ name: "pager", on: true });
+      assert(windows.complete(["/no"]).text() == "/no-pager\tTurn off /pager.\n:none\n");
+    }
+
 A plain word gets positional arguments' values, here files, since
 `FILE` is `strings`; options only when nothing else can go there.
 

@@ -228,6 +228,35 @@ A negatable counted flag goes back to zero.
       assert(args.get(v) == 1);
     }
 
+## Flags that are on
+
+A flag declared `on` is true when not given. `--no-pager` turns it
+off, as its environment variable can, and `--pager` turns it back on;
+it's negatable without saying so.
+
+    test("flags that are on") {
+      let cli = new Command({ name: "c" });
+      let pager = cli.flag({ name: "pager", short: "p", help: "Page the output.", env: "C_PAGER", on: true });
+      let none = cli.parse([]) as Args orelse panic();
+      assert(none.get(pager));
+      assert(none.source(pager.param) == Source.absent);
+      assert(!((cli.parse(["--no-pager"]) as Args orelse panic()).get(pager)));
+      assert((cli.parse(["--no-pager", "--pager"]) as Args orelse panic()).get(pager));
+      assert((cli.parse(["--no-pager", "-p"]) as Args orelse panic()).get(pager));
+      assert(!((cli.parse([], envOf(["C_PAGER=off"])) as Args orelse panic()).get(pager)));
+      assert((cli.parse(["--pager"], envOf(["C_PAGER=0"])) as Args orelse panic()).get(pager));
+      assert((cli.parse([], envOf(["C_PAGER="])) as Args orelse panic()).get(pager));
+      assert(outcome(cli.parse(["--no-pager=1"])) == "unexpectedValue: option --no-pager takes no value");
+      assert(outcome(cli.parse([], envOf(["C_PAGER=never"]))) == "invalidValue: invalid value 'never' for --pager from C_PAGER: expected true or false");
+      // Inherited, a subcommand reads it the same way.
+      let git = new Command({ name: "git" });
+      let color = git.flag({ name: "color", inherited: true, on: true });
+      let add = git.subcommand({ name: "add" });
+      assert((git.parse(["add"]) as Args orelse panic()).get(color));
+      assert(!((git.parse(["add", "--no-color"]) as Args orelse panic()).get(color)));
+      assert(!((add.parse(["--no-color"]) as Args orelse panic()).get(color)));
+    }
+
 ## Flags take no value
 
     test("flags take no value") {
@@ -565,6 +594,9 @@ rather than panicking where they're declared.
       let e = new Command({ name: "e" });
       e.positionals(strings, { name: "X", min: 3, max: 2 });
       assert(outcome(e.parse([])) == "invalidSpec: invalid command spec: positional X allows no count of arguments");
+      let f = new Command({ name: "f" });
+      f.count({ name: "verbose", on: true });
+      assert(outcome(f.parse([])) == "invalidSpec: invalid command spec: counted flag --verbose can't be on");
       // A positional may share an option's name.
       let g = new Command({ name: "g" });
       g.option(strings, { name: "file" });

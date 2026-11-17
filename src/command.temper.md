@@ -113,6 +113,15 @@ Whether the command's subcommands accept it too, before or after their
 names, as for all settings below.
 
       public inherited: Boolean = false,
+
+Whether the flag is on (true) when it isn't given, for a flag such as
+`--color` that users turn off with `--no-color`. Such a flag is
+negatable whether `negatable` is set or not, since otherwise only its
+environment variable could turn it off. Help shows `[default: on]`.
+Last, so that languages passing settings in order keep their places.
+A counted flag can't be on.
+
+      public on: Boolean = false,
     ) {}
 
 Settings for an option, which takes a value: `--level 3`,
@@ -176,6 +185,10 @@ What help calls the value; empty for flags.
 
       public valueName: String,
       public negatable: Boolean,
+
+Whether a flag is true when not given.
+
+      public on: Boolean,
 
 Whether subcommands accept it too.
 
@@ -316,10 +329,13 @@ Not given, so any default applies.
     }
 
 A flag reads as true when its last occurrence set it, or its default
-(false) when absent.
+(false, unless it's `on`) when absent.
 
     class Flag(public param: Param) extends Arg<Boolean> {
-      public read(found: Found): Boolean { found.last == "true" }
+      public read(found: Found): Boolean {
+        let last = found.last;
+        if (last == null) { param.on } else { last == "true" }
+      }
     }
 
 A counted flag reads as the sum of its counts: one per `-v`, or the
@@ -415,16 +431,19 @@ subcommand's ending with where it is (`in frob add`).
       }
 
 A flag: true when given, false when not (or as its environment
-variable says).
+variable says), or true when not given if it's `on`.
 
       public flag(spec: FlagSpec): Arg<Boolean> {
-        new Flag(addParam(ParamKind.flag, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, false, 0, 0, null, [], new NoValueChecker("expected.boolean"), null))
+        new Flag(addParam(ParamKind.flag, spec.name, spec.short, spec.help, spec.env, "", spec.negatable || spec.on, spec.on, spec.inherited, false, false, 0, 0, null, [], new NoValueChecker("expected.boolean"), null))
       }
 
 A counted flag: the number of times it's given, so `-vvv` is 3.
 
       public count(spec: FlagSpec): Arg<Int> {
-        new Counter(addParam(ParamKind.count, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, spec.inherited, false, true, 0, 0, null, [], new NoValueChecker("expected.count"), null))
+        if (spec.on) {
+          specProblems.add("counted flag --${spec.name} can't be on");
+        }
+        new Counter(addParam(ParamKind.count, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, false, spec.inherited, false, true, 0, 0, null, [], new NoValueChecker("expected.count"), null))
       }
 
 An option that may be left out; its value is null then. Given more
@@ -471,24 +490,24 @@ takes more, so `SRC... DEST` works.
 
       private optionParam<T>(type: ValueType<T>, spec: OptionSpec, required: Boolean, repeated: Boolean, defaultText: String?): Param {
         let valueName = spec.valueName ?? asciiUpper(spec.name);
-        addParam(ParamKind.option, spec.name, spec.short, spec.help, spec.env, valueName, false, spec.inherited, required, repeated, 0, 0, defaultText, type.choices, new TypeChecker<T>(type), spec.completer)
+        addParam(ParamKind.option, spec.name, spec.short, spec.help, spec.env, valueName, false, false, spec.inherited, required, repeated, 0, 0, defaultText, type.choices, new TypeChecker<T>(type), spec.completer)
       }
 
       private positionalParam<T>(type: ValueType<T>, name: String, help: String, min: Int, max: Int?, completer: Completer?): Param {
         if (min < 0 || (max != null && max < min) || max == 0) {
           specProblems.add("positional ${name} allows no count of arguments");
         }
-        addParam(ParamKind.positional, name, null, help, null, name, false, false, min > 0, true, min, max, null, type.choices, new TypeChecker<T>(type), completer)
+        addParam(ParamKind.positional, name, null, help, null, name, false, false, false, min > 0, true, min, max, null, type.choices, new TypeChecker<T>(type), completer)
       }
 
       private addParam(
         kind: ParamKind, name: String, short: String?, help: String, env: String?,
-        valueName: String, negatable: Boolean, inherited: Boolean, required: Boolean,
+        valueName: String, negatable: Boolean, on: Boolean, inherited: Boolean, required: Boolean,
         repeated: Boolean, min: Int, max: Int?, defaultText: String?,
         choiceList: List<String>, checker: Checker, completer: Completer?,
       ): Param {
         checkNames(kind, name, short);
-        let p = new Param(kind, name, short, help, env, valueName, negatable, inherited, required, repeated, min, max, defaultText, choiceList, params.length, checker, completer, this);
+        let p = new Param(kind, name, short, help, env, valueName, negatable, on, inherited, required, repeated, min, max, defaultText, choiceList, params.length, checker, completer, this);
         params.add(p);
         p
       }

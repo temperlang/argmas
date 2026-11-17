@@ -237,6 +237,7 @@ An option's names in `style`: `-l, --level <LEVEL>` in `gnu`,
       let out = new ListBuilder<String>();
       let fallback = p.defaultText;
       if (fallback != null) { out.add(messages.text("help.default", ["value", fallback])); }
+      if (p.on) { out.add(messages.text("help.on")); }
       let env = p.env;
       if (env != null) { out.add(messages.text("help.env", ["name", env])); }
       if (!p.choices.isEmpty) {

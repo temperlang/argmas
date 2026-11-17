@@ -37,7 +37,7 @@ The [design](../docs/design.md#keys) lists every key; this count is
 a reminder to update that list when a key is added.
 
     test("every key is listed in the design") {
-      assert(englishMessages.length == 57);
+      assert(englishMessages.length == 59);
     }
 
 ## A table of the program's own

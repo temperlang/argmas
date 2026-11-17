@@ -39,8 +39,9 @@ line per command and argument, from `spec_text`:
                                        later one is a subcommand of it)
     KIND NAME SHORT TYPE MIN MAX      (`-` where there's none)
 
-KIND is flag, count, negatable, option, required, repeated,
-positional, or positionals, and TYPE string or int. Add it to
+KIND is flag, count, negatable, on (a flag that's on unless turned
+off with --no-NAME), option, required, repeated, positional, or
+positionals, and TYPE string, int (32 bits), or int64. Add it to
 `EXTERNAL`, with how it's built, as `build_getopt` and `build_clap`
 do.
 """
@@ -68,10 +69,12 @@ SPECS = {
             ("count", "verbose", "v", "string", 0, None),
             ("flag", "quiet", "q", "string", 0, None),
             ("negatable", "color", None, "string", 0, None),
+            ("on", "pager", None, "string", 0, None),
             ("option", "output", "o", "string", 0, None),
             ("option", "name", None, "string", 0, None),
             ("option", "level", "l", "int", 0, None),
             ("repeated", "include", "I", "string", 0, None),
+            ("option", "size", None, "int64", 0, None),
             ("positionals", "FILE", None, "string", 0, None),
         ],
     },
@@ -138,6 +141,13 @@ CASES = [
     ("long-int-invalid", "frob", ["--level=seven"]),
     ("long-int-empty", "frob", ["--level="]),
     ("long-int-too-big", "frob", ["--level=99999999999"]),
+    ("int64", "frob", ["--size=5000000000"]),
+    ("int64-max", "frob", ["--size=9223372036854775807"]),
+    ("int64-min", "frob", ["--size=-9223372036854775808"]),
+    ("int64-negative-separate", "frob", ["--size", "-5000000000"]),
+    ("int64-too-big", "frob", ["--size=9223372036854775808"]),
+    ("int64-too-small", "frob", ["--size=-9223372036854775809"]),
+    ("int64-exponent", "frob", ["--size=5e9"]),
     # `--` and `-`.
     ("double-dash", "frob", ["--", "-v", "--output=x"]),
     ("double-dash-twice", "frob", ["a", "--", "--", "b"]),
@@ -158,6 +168,12 @@ CASES = [
     ("negatable-last-wins-on", "frob", ["--no-color", "--color"]),
     ("not-negatable", "frob", ["--no-quiet"]),
     ("negatable-given-value", "frob", ["--no-color=1"]),
+    # Flags that are on unless turned off.
+    ("on-not-given", "frob", ["a"]),
+    ("on-turned-off", "frob", ["--no-pager"]),
+    ("on-turned-back-on", "frob", ["--no-pager", "--pager"]),
+    ("on-last-wins-off", "frob", ["--pager", "--no-pager"]),
+    ("on-given-value", "frob", ["--no-pager=1"]),
     # Repeats.
     ("repeated-collects", "frob", ["-I", "a", "--include=b", "-Ic"]),
     ("option-last-wins", "frob", ["-o", "a", "--output", "b"]),
@@ -180,6 +196,7 @@ CASES = [
     ("prefix-unique", "frob", ["--verb"]),
     ("prefix-unique-value", "frob", ["--out=x"]),
     ("prefix-ambiguous", "frob", ["--n=x"]),
+    ("prefix-negation", "frob", ["--no-pag"]),
     # Values starting with `-`.
     ("dash-value-attached-long", "frob", ["--output=-x"]),
     ("dash-value-attached-short", "frob", ["-o-x"]),
@@ -238,7 +255,7 @@ def all_args(spec):
 
 
 def default(kind):
-    return {"count": 0, "flag": False, "negatable": False, "repeated": [], "positionals": []}.get(kind)
+    return {"count": 0, "flag": False, "negatable": False, "on": True, "repeated": [], "positionals": []}.get(kind)
 
 
 def summary(spec_name, result):
@@ -276,9 +293,9 @@ def argmas_parser():
     def declare(cli, args):
         handles = []
         for kind, name, short, type_name, low, high in args:
-            value_type = argmas.ints if type_name == "int" else argmas.strings
-            if kind in ("flag", "count", "negatable"):
-                spec = argmas.FlagSpec(name=name, short=short, negatable=kind == "negatable")
+            value_type = {"int": argmas.ints, "int64": argmas.ints64}.get(type_name, argmas.strings)
+            if kind in ("flag", "count", "negatable", "on"):
+                spec = argmas.FlagSpec(name=name, short=short, negatable=kind == "negatable", on=kind == "on")
                 handle = cli.count(spec) if kind == "count" else cli.flag(spec)
             elif kind == "positional":
                 handle = cli.positional(value_type, argmas.PositionalSpec(name=name))
@@ -365,13 +382,16 @@ def argparse_parser():
             if kind not in ("positional", "positionals"):
                 names.append(f"--{name}")
             options = {"dest": name}
-            value_type = int if type_name == "int" else str
+            # Python's int has no limit, for int and int64 alike.
+            value_type = int if type_name in ("int", "int64") else str
             if kind == "flag":
                 options["action"] = "store_true"
             elif kind == "count":
                 options.update(action="count", default=0)
             elif kind == "negatable":
                 options.update(action=argparse.BooleanOptionalAction, default=False)
+            elif kind == "on":
+                options.update(action=argparse.BooleanOptionalAction, default=True)
             elif kind in ("option", "required"):
                 options.update(type=value_type, required=kind == "required")
             elif kind == "repeated":

@@ -56,6 +56,16 @@ error.text();
 //       --version        Show the version and exit.
 ```
 
+A flag can be `on` unless turned off, as `--no-color` style flags
+are, and `ints64` takes integers past 32 bits:
+
+```temper
+let color = cli.flag({ name: "color", help: "Color the output.", on: true });
+let size = cli.optionOr(ints64, 4294967296i64, { name: "size", help: "Bytes to read." });
+// Help shows `--[no-]color  Color the output. [default: on]`; long
+// options are never matched by prefix, so `--siz` is an error.
+```
+
 Subcommands are commands of their own, with their own arguments and
 help, and options marked `inherited` work before or after their names:
 
@@ -131,7 +141,9 @@ it; users install it where their shell looks:
 | PowerShell 5.1+ | `frob --completions powershell \| Out-String \| Invoke-Expression` in your profile (`$PROFILE`) |
 
 zsh, fish, and PowerShell show descriptions; bash shows only the
-candidates. `cmd.exe` has no programmable completion, so it isn't
+candidates. Quotes typed on the line are removed before the program
+sees a word (`frob --branch "my w<Tab>` asks about `my w`), and every
+shell quotes what it inserts (`"my work"`). `cmd.exe` has no programmable completion, so it isn't
 supported. Options and values can have completers that find values
 when the program runs, such as branch names; the
 [design](docs/design.md#completions) has the details.

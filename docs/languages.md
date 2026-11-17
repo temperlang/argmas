@@ -18,11 +18,18 @@ when (cli.parse(argv, env)) {
 Everywhere, `args.get(h)` is two methods, `getValue` for handles that
 always have a value and `getMaybe` for options that may be absent, as
 the [design](design.md#temper-constraints-met-so-far) explains, and
-`ints`, `strings`, and `choices` are named so no language's keywords
-get in the way. Declaring an argument (`flag`, `optionOr`, and the
-rest) returns `Arg<T>` or `MaybeArg<T>`, the types `getValue` and
-`getMaybe` take, so each language knows the value's type from the
+`ints`, `ints64`, `strings`, and `choices` are named so no language's
+keywords get in the way. Declaring an argument (`flag`, `optionOr`,
+and the rest) returns `Arg<T>` or `MaybeArg<T>`, the types `getValue`
+and `getMaybe` take, so each language knows the value's type from the
 handle's.
+
+`ints64`, not `int64s`, which Python would spell `int64_s` and C#
+`Int64_S`; it's `ints64` in Python and Rust and `Ints64` in C#. A
+flag's `on` setting reads the same everywhere (`on=True`,
+`.on(true)`, `on: true`), and comes last in `FlagSpec`, so C++'s and
+Lua's settings in order keep their places; `default`, the usual name,
+is a keyword in C++, C#, and Java, and the method of Rust's `Default`.
 
 ## C++
 

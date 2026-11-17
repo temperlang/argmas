@@ -68,6 +68,25 @@ whole.
       );
     }
 
+## Flags that are on
+
+A flag that's `on` shows as negatable, with `[default: on]`, a note
+of its own in the [messages](messages.temper.md).
+
+    test("flags that are on") {
+      let cli = new Command({ name: "c" });
+      cli.flag({ name: "pager", short: "p", help: "Page the output.", env: "C_PAGER", on: true });
+      assert(cli.help() == """
+        "Usage: c [OPTIONS]
+        "
+        "Options:
+        "  -p, --[no-]pager  Page the output. [default: on] [env: C_PAGER]
+        "  -h, --help        Show this help and exit.
+      );
+      cli.setMessage("help.on", "[an]");
+      assert(contains(cli.help(), "Page the output. [an] [env: C_PAGER]"));
+    }
+
 ## Required options, long names, and wrapping
 
     let deploy(): Command {

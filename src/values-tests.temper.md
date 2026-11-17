@@ -31,6 +31,59 @@ helpers parse with a type, giving a marker value when it fails.
       }
     }
 
+`ints64` takes the same text, within 64 bits.
+
+    let showInt64(text: String): String { (ints64.parse(text) orelse -999i64).toString() }
+
+    test("64-bit integers") {
+      assert(showInt64("0") == "0");
+      assert(showInt64("-42") == "-42");
+      assert(showInt64("+007") == "7");
+      assert(showInt64("-0") == "0");
+      assert(showInt64("2147483648") == "2147483648");
+      assert(showInt64("-2147483649") == "-2147483649");
+      assert(showInt64("5000000000") == "5000000000");
+      assert(showInt64("9223372036854775807") == "9223372036854775807");
+      assert(showInt64("-9223372036854775808") == "-9223372036854775808");
+      assert(showInt64("00009223372036854775807") == "9223372036854775807");
+      assert((ints64.parse("9007199254740993") orelse 0i64) == 9007199254740993i64);
+      assert(ints64.expected == "an integer");
+    }
+
+    test("not 64-bit integers") {
+      for (let text of [
+        "", "-", "+", " 5", "1_000", "0x10", "1e3", "1.0", "--5", "five",
+        "9223372036854775808", "-9223372036854775809", "9223372036854775810",
+        "18446744073709551616", "99999999999999999999", "٣",
+      ]) {
+        assert(showInt64(text) == "-999") { "'${text}' is not a 64-bit integer" }
+      }
+    }
+
+Options and positional arguments take them as any other type, with
+the same errors, and a default in help.
+
+    test("64-bit options") {
+      let cli = new Command({ name: "dd" });
+      let size = cli.optionOr(ints64, 4294967296i64, { name: "size", short: "s", help: "How many bytes.", env: "DD_SIZE" });
+      let skip = cli.option(ints64, { name: "skip" });
+      let offsets = cli.positionals(ints64, { name: "OFFSET" });
+      let none = cli.parse([]) as Args orelse panic();
+      assert(none.get(size) == 4294967296i64);
+      assert(none.get(skip) == null);
+      let args = cli.parse(["-s", "-9223372036854775808", "--skip=8589934592", "1", "-5000000000"]) as Args orelse panic();
+      assert(args.get(size) == -9223372036854775807i64 - 1i64);
+      assert((args.get(skip) ?? 0i64) == 8589934592i64);
+      let offsetList = args.get(offsets);
+      assert(offsetList.length == 2 && offsetList[0] == 1i64 && offsetList[1] == -5000000000i64);
+      let fromEnv = cli.parse([], new MapEnvironment(new Map([new Pair("DD_SIZE", "9223372036854775807")]))) as Args orelse panic();
+      assert(fromEnv.get(size) == 9223372036854775807i64);
+      assert(outcome(cli.parse(["--size=9223372036854775808"])) == "invalidValue: invalid value '9223372036854775808' for --size: expected an integer");
+      assert(outcome(cli.parse(["x"])) == "invalidValue: invalid value 'x' for OFFSET: expected an integer");
+      assert(contains(cli.help(), "How many bytes. [default: 4294967296] [env: DD_SIZE]"));
+      assert(ints64.format(-9223372036854775807i64 - 1i64) == "-9223372036854775808");
+    }
+
 ## Floats
 
     test("floats") {

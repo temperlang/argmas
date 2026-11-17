@@ -20,6 +20,7 @@ enum Kind {
     Flag,
     Count,
     Negatable,
+    On,
     Option,
     Required,
     Repeated,
@@ -31,7 +32,8 @@ struct ArgSpec {
     kind: Kind,
     name: &'static str,
     short: Option<char>,
-    is_int: bool,
+    /// 32 or 64 for integers, 0 for strings.
+    int_bits: u32,
     min: usize,
     max: Option<usize>,
 }
@@ -68,6 +70,7 @@ fn read_spec(text: &str) -> Vec<CommandSpec> {
             "flag" => Kind::Flag,
             "count" => Kind::Count,
             "negatable" => Kind::Negatable,
+            "on" => Kind::On,
             "option" => Kind::Option,
             "required" => Kind::Required,
             "repeated" => Kind::Repeated,
@@ -86,7 +89,11 @@ fn read_spec(text: &str) -> Vec<CommandSpec> {
                 short: Some(words[2])
                     .filter(|w| !none(w))
                     .and_then(|w| w.chars().next()),
-                is_int: words[3] == "int",
+                int_bits: match words[3] {
+                    "int" => 32,
+                    "int64" => 64,
+                    _ => 0,
+                },
                 min: words[4].parse().expect("a number"),
                 max: Some(words[5])
                     .filter(|w| !none(w))
@@ -111,14 +118,18 @@ fn declare(spec: &CommandSpec) -> Command {
                 arg = arg.short(short);
             }
         }
-        if a.is_int {
-            arg = arg.value_parser(value_parser!(i32));
+        match a.int_bits {
+            32 => arg = arg.value_parser(value_parser!(i32)),
+            64 => arg = arg.value_parser(value_parser!(i64)),
+            _ => {}
         }
         arg = match a.kind {
             Kind::Flag => arg.action(ArgAction::SetTrue),
             Kind::Count => arg.action(ArgAction::Count),
             // `--color` and `--no-color`, the last one given winning.
-            Kind::Negatable => arg.action(ArgAction::SetTrue).overrides_with(no_name(name)),
+            // When it's on, reading it is reading that `--no-color`
+            // isn't set.
+            Kind::Negatable | Kind::On => arg.action(ArgAction::SetTrue).overrides_with(no_name(name)),
             Kind::Option => arg.action(ArgAction::Set),
             Kind::Required => arg.action(ArgAction::Set).required(true),
             Kind::Repeated => arg.action(ArgAction::Append),
@@ -132,7 +143,7 @@ fn declare(spec: &CommandSpec) -> Command {
             }
         };
         command = command.arg(arg);
-        if a.kind == Kind::Negatable {
+        if matches!(a.kind, Kind::Negatable | Kind::On) {
             command = command.arg(
                 Arg::new(no_name(name))
                     .long(no_name(name))
@@ -161,8 +172,11 @@ fn json_string(s: &str) -> String {
 fn value(a: &ArgSpec, matches: &ArgMatches) -> String {
     let id = a.name;
     let one = |m: &ArgMatches| -> String {
-        if a.is_int {
+        if a.int_bits == 32 {
             m.get_one::<i32>(id)
+                .map_or("null".to_owned(), |n| n.to_string())
+        } else if a.int_bits == 64 {
+            m.get_one::<i64>(id)
                 .map_or("null".to_owned(), |n| n.to_string())
         } else {
             m.get_one::<String>(id)
@@ -170,8 +184,14 @@ fn value(a: &ArgSpec, matches: &ArgMatches) -> String {
         }
     };
     let many = |m: &ArgMatches| -> String {
-        let items: Vec<String> = if a.is_int {
+        let items: Vec<String> = if a.int_bits == 32 {
             m.get_many::<i32>(id)
+                .into_iter()
+                .flatten()
+                .map(|n| n.to_string())
+                .collect()
+        } else if a.int_bits == 64 {
+            m.get_many::<i64>(id)
                 .into_iter()
                 .flatten()
                 .map(|n| n.to_string())
@@ -187,6 +207,7 @@ fn value(a: &ArgSpec, matches: &ArgMatches) -> String {
     };
     match a.kind {
         Kind::Flag | Kind::Negatable => matches.get_flag(id).to_string(),
+        Kind::On => (!matches.get_flag(no_name(id))).to_string(),
         Kind::Count => matches.get_count(id).to_string(),
         Kind::Repeated | Kind::Positionals => many(matches),
         _ => one(matches),

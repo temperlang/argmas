@@ -40,8 +40,9 @@ status 0.
   or `/`) in `singleDash` and `windows`, and in `gnu` both `-v` and
   `--verbose`; `no-` forms of negatable flags; options inherited from
   above; and the built-ins (`--help`, `-h`, `--version`,
-  `--completions`). Each has its help as a description. In `windows`,
-  names match ignoring case.
+  `--completions`). Each has its help as a description, but for `no-`
+  forms, "Undo --color.", or, for a flag that's `on` when not given,
+  "Turn off --color.". In `windows`, names match ignoring case.
 - **Repeats:** an option or flag already given isn't offered again,
   unless it's counted or `repeated`; a negatable flag given either way
   isn't offered either way.
@@ -282,7 +283,10 @@ of `styles`.
             offer(style, "${lead}${p.name}", p.help);
             let s = p.short;
             if (s != null) { offer(style, "${short}${s}", p.help); }
-            if (p.negatable) { offer(style, "${lead}no-${p.name}", messages.text("complete.negate", ["option", "${lead}${p.name}"])); }
+            if (p.negatable) {
+              let key = if (p.on) { "complete.turnOff" } else { "complete.negate" };
+              offer(style, "${lead}no-${p.name}", messages.text(key, ["option", "${lead}${p.name}"]));
+            }
           }
           let helpText = messages.text("builtin.help");
           if (style == Style.windows && command.builtInHelpQuestion) { offer(style, "${lead}?", helpText); }
