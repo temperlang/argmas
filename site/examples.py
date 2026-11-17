@@ -48,9 +48,9 @@ def outcome(result, values=None, width=None):
 # snippet: styles
 def frob(style):
     cli = Command(CommandSpec(name="frob", about="Frobnicate files.", style=style))
-    verbose = cli.flag(FlagSpec(name="verbose", short="v", help_="Say more."))
-    level = cli.option_or(ints, 3, OptionSpec(name="level", short="l", help_="How hard."))
-    files = cli.positionals(strings, PositionalSpec(name="FILE", help_="Files to frobnicate."))
+    verbose = cli.flag(FlagSpec(name="verbose", short="v", help="Say more."))
+    level = cli.option_or(ints, 3, OptionSpec(name="level", short="l", help="How hard."))
+    files = cli.positionals(strings, PositionalSpec(name="FILE", help="Files to frobnicate."))
     return cli, verbose, level, files
 
 
@@ -92,12 +92,12 @@ def styles():
 
 # snippet: subcommands
 git = Command(CommandSpec(name="minigit", about="Track files."))
-quiet = git.flag(FlagSpec(name="quiet", short="q", help_="Say less.", inherited=True))
-repo = git.option(directories, OptionSpec(name="dir", help_="Where the repository is."))
+quiet = git.flag(FlagSpec(name="quiet", short="q", help="Say less.", inherited=True))
+repo = git.option(directories, OptionSpec(name="dir", help="Where the repository is."))
 
 add = git.subcommand(SubcommandSpec(name="add", about="Add files."))
-force = add.flag(FlagSpec(name="force", short="f", help_="Add ignored files too."))
-added = add.positionals(paths, PositionalSpec(name="PATH", min_=1, help_="Files to add."))
+force = add.flag(FlagSpec(name="force", short="f", help="Add ignored files too."))
+added = add.positionals(paths, PositionalSpec(name="PATH", min=1, help="Files to add."))
 
 rm = git.subcommand(SubcommandSpec(name="rm", about="Remove files.", aliases=["remove"]))
 # end snippet
@@ -119,9 +119,9 @@ def subcommands():
 
 # snippet: completions
 cli = Command(CommandSpec(name="frob", completions=True))
-cli.flag(FlagSpec(name="verbose", short="v", help_="Say more."))
-cli.option(choices(["fast", "slow"]), OptionSpec(name="mode", help_="How to go about it."))
-cli.option(paths, OptionSpec(name="out", help_="Where to write."))
+cli.flag(FlagSpec(name="verbose", short="v", help="Say more."))
+cli.option(choices(["fast", "slow"]), OptionSpec(name="mode", help="How to go about it."))
+cli.option(paths, OptionSpec(name="out", help="Where to write."))
 # end snippet
 
 # What's typed before each Tab, after `frob `.
@@ -144,7 +144,7 @@ def completions():
 # snippet: messages
 def frob_with(messages):
     cli = Command(CommandSpec(name="frob", about="Frobnicate files."))
-    cli.option_or(ints, 3, OptionSpec(name="level", short="l", help_="How hard."))
+    cli.option_or(ints, 3, OptionSpec(name="level", short="l", help="How hard."))
     cli.set_messages(messages)
     return cli
 

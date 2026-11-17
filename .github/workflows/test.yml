@@ -21,7 +21,7 @@ env:
   # rfc-657-transition. Once the switch lands, download Temper's
   # nightly from temperlang/temper's releases instead, as the other
   # libraries do, and drop the `temper` job's build.
-  TEMPEST_COMMIT: 12f40fd2b9a617b9be3c8b46fbf1bf47b06683ba
+  TEMPEST_COMMIT: 43c07a78c1c521781db74474576a9d8cf235bd9b
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
 
 jobs:
@@ -159,10 +159,6 @@ jobs:
 
       - name: Test
         run: temper test -b ${{ matrix.backend }}
-        # C++ fails one test until the compiler formats Float64 as the
-        # other backends do (-1500.0, not -1.5e+03); remove this once
-        # TEMPEST_COMMIT includes that fix. The tour still runs.
-        continue-on-error: ${{ matrix.backend == 'cpp' }}
 
       # The tour in demos/ must print the same text in every language.
       # Each language's own tools build it against the output `temper

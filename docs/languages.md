@@ -120,8 +120,9 @@ match cli.parse(sys.argv[1:], env):
 
 - Bags are keyword arguments, and names are snake case
   (`option_or`, `get_value`, `exit_status`).
-- `help`, `min`, and `max` are `help_`, `min_`, and `max_`, because
-  they're builtins, though argparse users write `help=`.
+- Settings keep their plain names, builtins included, so `help=`,
+  `min=`, and `max=` read as in argparse. Only hard keywords would
+  take a trailing `_`, and no setting meets one.
 - `match` works on results, and commands compare with `==`.
 
 ## Rust
@@ -181,9 +182,7 @@ In Argmas's API:
   everywhere, so it stays. No method or class name collides any more.
 
 In Temper's translations, not Argmas: Lua's and C++'s positional-only
-bags; Python's `help_`, `min_`, and `max_` (builtins, but legal as
-keyword arguments, and their properties keep the plain names); Rust's
-`Arc<String>` setters; C#'s `Optional` for `getMaybe`; and
+bags; Rust's `Arc<String>` setters; C#'s `Optional` for `getMaybe`; and
 JavaScript's `new` taking positional settings. Commands compare with
 an `eq` method outside Python and Rust because tempest translates a
 user-defined `@operator("==")` to that method rather than to each
