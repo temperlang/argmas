@@ -220,6 +220,45 @@ A [tour](demos/README.md), `pack`, uses Argmas from each one, with
 identical output, and [docs/languages.md](docs/languages.md) shows
 what the API looks like in each.
 
+## Releases
+
+Argmas is beta, as all Temper libraries are until Temper's
+translations reach 1.0, so its API may still change, and each
+[release](https://github.com/temperlang/argmas/releases) is marked a
+pre-release. It isn't on any package registry yet: each release
+carries every language's package, with Temper's runtime
+(`temper-core`) and std beside it, at the version Argmas was built
+with, so it installs from the release's files alone.
+
+Download a release's files, and check them:
+
+    gh release download v0.1.0 -R temperlang/argmas -D argmas-0.1.0
+    cd argmas-0.1.0 && sha256sum -c SHA256SUMS && cd ..
+
+Or download single files from the release's page, or with
+`curl -LO https://github.com/temperlang/argmas/releases/download/v0.1.0/FILE`
+(`sha256sum -c --ignore-missing SHA256SUMS` checks just those). Then,
+for each language:
+
+- C++: `tar xzf argmas-cpp-0.1.0.tar.gz`, then in your CMakeLists.txt
+  `add_subdirectory(argmas-cpp-0.1.0/argmas)` and
+  `target_link_libraries(app PRIVATE argmas)`
+- C#: `unzip argmas-csharp-0.1.0.zip`, then
+  `dotnet add reference argmas-csharp-0.1.0/argmas/src/Argmas.csproj`
+- Java: `unzip argmas-java-0.1.0-maven.zip -d ~/.m2/repository` (a
+  Maven repository, which Gradle can also use as a `maven { url }`),
+  then depend on `argmas:argmas:0.1.0`
+- JavaScript: `npm install ./argmas-0.1.0/*.tgz`
+- Lua: `tar xzf argmas-lua-0.1.0.tar.gz`, then put
+  `argmas-lua-0.1.0/?/init.lua;argmas-lua-0.1.0/?.lua` on `LUA_PATH`
+  (or `package.path`); its rockspecs don't yet install with LuaRocks
+- Python: `pip install --no-index --find-links argmas-0.1.0 argmas` (or
+  the same with `uv pip install`)
+- Rust: `tar xzf argmas-rust-0.1.0.tar.gz`, then in Cargo.toml
+  `argmas = { path = "argmas-rust-0.1.0/argmas" }`
+
+[RELEASING.md](RELEASING.md) says how releases are made.
+
 ## Development
 
 Written with Claude Code and Opus 5.5.
@@ -273,7 +312,8 @@ for everything Argmas prints on it (see `site/build.py`):
 CI ([test.yml](.github/workflows/test.yml)) runs the tests on every
 backend, the tours, the reference parsers, and the shells: bash, zsh,
 fish, and PowerShell on Linux, bash, zsh, and fish on macOS, and
-PowerShell on Windows.
+PowerShell on Windows. A `v` tag makes a release
+([release.yml](.github/workflows/release.yml), [RELEASING.md](RELEASING.md)).
 
 ## License
 

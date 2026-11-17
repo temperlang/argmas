@@ -1,0 +1,198 @@
+name: release
+
+# A GitHub release for each `v` tag (`v0.1.0`), made automatically, so
+# push one only on purpose (RELEASING.md):
+#
+# - `check`: the tag must be `v` and the version in
+#   src/config.temper.md, or nothing else runs;
+# - `temper`: the compiler, from the same pinned commit as test.yml;
+# - `assets`: Argmas's package for every language, with Temper's runtime
+#   (temper-core) and std at the compiler's version, so each installs
+#   offline, and SHA256SUMS (.github/release.py); the Python and
+#   JavaScript packages are installed from those files alone and run the
+#   tour;
+# - `release`: the GitHub release, with all of them, marked a
+#   pre-release, as Temper's libraries stay beta until Temper's
+#   translations reach 1.0.
+#
+# Run from the Actions tab (workflow_dispatch), it's a dry run: the same
+# assets, uploaded as the run's artifact, and no release. Nothing goes
+# to a package registry.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# Read-only by default; only `release` writes, to make the release.
+permissions:
+  contents: read
+
+# One run per tag; a re-pushed tag waits for the run before it.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # test.yml's, which `check` requires, so a release is built by the
+  # compiler CI tested it with.
+  TEMPEST_COMMIT: b2425cde00751867eccd90b13e58eadd1336dda3
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      # Actions are pinned by commit, with the release in a comment.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The whole history, to see whether main has the tagged commit.
+          fetch-depth: 0
+      - id: version
+        name: The tag names the library's version
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            python3 .github/release.py check "$GITHUB_REF_NAME" | tee -a "$GITHUB_OUTPUT"
+          else
+            python3 .github/release.py check | tee -a "$GITHUB_OUTPUT"
+          fi
+      # Releases are tagged on main; one tagged elsewhere only warns.
+      - if: github.event_name == 'push'
+        name: The tagged commit is on main
+        run: |
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::warning::$GITHUB_REF_NAME ($GITHUB_SHA) isn't on main"
+          fi
+
+  # As test.yml's `temper` job, sharing its cache.
+  temper:
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/temper-bin
+          key: tempest-${{ runner.os }}-${{ env.TEMPEST_COMMIT }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: temperlang/tempest
+          ref: ${{ env.TEMPEST_COMMIT }}
+          path: tempest
+          persist-credentials: false
+          # The whole history and its tags, from which the compiler names
+          # its version, and so the runtimes' versions.
+          fetch-depth: 0
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@cfcaf53ba4c621917ec7f78a66bff7a8848ddad4 # 1.85.0 branch, 2026-10-16
+      - if: steps.cache.outputs.cache-hit != 'true'
+        name: Build the compiler
+        working-directory: tempest
+        run: |
+          cargo build --locked --release -p tempest
+          mkdir -p "$RUNNER_TEMP/temper-bin"
+          cp target/release/temper "$RUNNER_TEMP/temper-bin/"
+      - run: '"$RUNNER_TEMP/temper-bin/temper" --version'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: temper
+          path: ${{ runner.temp }}/temper-bin/temper
+          retention-days: 3
+
+  assets:
+    needs: [check, temper]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: temper
+          path: ${{ runner.temp }}/temper-bin
+      - run: chmod +x "$RUNNER_TEMP/temper-bin/temper"
+
+      # uv builds the wheels and sdists, and the smoke test's venv.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+      # Java 21 for Maven, and 8, which temper-core's pom asks for as a
+      # Maven toolchain (`<version>8</version>`, named so here); Maven
+      # is the image's.
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            21
+      - name: Java 8 as Maven's toolchain
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/toolchains.xml <<EOF
+          <toolchains>
+            <toolchain>
+              <type>jdk</type>
+              <provides><version>8</version></provides>
+              <configuration><jdkHome>$JAVA_HOME_8_X64</jdkHome></configuration>
+            </toolchain>
+          </toolchains>
+          EOF
+          test -x "$JAVA_HOME_8_X64/bin/javac"
+      # NuGet packages, once the compiler is a release (release.py).
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: "6.0.x"
+
+      - name: Assets
+        run: python3 .github/release.py assets --temper "$RUNNER_TEMP/temper-bin/temper" --out "$RUNNER_TEMP/dist"
+      - name: Install and run the Python and JavaScript packages
+        run: python3 .github/release.py smoke "$RUNNER_TEMP/dist"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: argmas-${{ env.VERSION }}
+          path: ${{ runner.temp }}/dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: github.event_name == 'push'
+    needs: [check, assets]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: argmas-${{ env.VERSION }}
+          path: dist
+      - name: GitHub release
+        working-directory: dist
+        run: |
+          sha256sum -c SHA256SUMS
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Argmas $VERSION, built from $GITHUB_SHA ([the run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)) with Temper's compiler at temperlang/tempest@$TEMPEST_COMMIT.
+
+          Beta, as all Temper libraries are until Temper's translations reach 1.0. Each language's package comes with Temper's runtime (temper-core) and std at the compiler's version, so it installs offline; the README's [Releases](https://github.com/$GITHUB_REPOSITORY#releases) section says how.
+
+          - Python: wheels and sdists (\`argmas\`, \`temper_core\`, \`temper_std\`)
+          - JavaScript: npm tarballs (\`argmas\`, \`@temperlang/core\`, \`@temperlang/std\`)
+          - Java: \`argmas-java-$VERSION-maven.zip\`, a Maven repository (pom, jar, sources, and javadoc of each)
+          - C#: \`argmas-csharp-$VERSION.zip\`, the projects' sources, and NuGet packages when Temper's compiler is a release
+          - Rust, Lua, and C++: \`argmas-LANGUAGE-$VERSION.tar.gz\`, the sources as Temper writes them
+          - \`SHA256SUMS\`: \`sha256sum -c SHA256SUMS\`
+          EOF
+          gh release create "$GITHUB_REF_NAME" * --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --prerelease --title "Argmas $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
