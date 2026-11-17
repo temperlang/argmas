@@ -16,6 +16,13 @@ looks like in each language.
 compares the transcript with `tour/expected.txt`, so the tours double
 as a cross-language test of parsing, help, and errors.
 
+Beside each tour, `examples` (`examples.py`, `examples.cpp`, and so on;
+C#'s is the project in `csharp/examples/`, Rust's
+`src/site_examples.rs`) holds the
+[site](https://temperlang.github.io/argmas/)'s section examples, each
+between `snippet:` comments, built with the tour. `run.py` runs it too
+and compares what it prints with `tour/examples.txt`.
+
 First build the libraries from the repo's top, with
 [Temper](https://temperlang.dev/):
 

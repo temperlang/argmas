@@ -3,8 +3,16 @@ name = "tour"
 version = "0.0.0"
 edition = "2021"
 publish = false
+# The tour, for `cargo run`.
+default-run = "tour"
 
 [dependencies]
 # Built by `temper build` at the repo's top.
 argmas = { path = "../../../temper.out/rust/argmas" }
 temper-core = { path = "../../../temper.out/rust/temper-core" }
+
+# The site's examples, beside the tour (src/main.rs). Cargo forbids a
+# binary named `examples`.
+[[bin]]
+name = "site_examples"
+path = "src/site_examples.rs"

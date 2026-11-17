@@ -162,9 +162,9 @@ jobs:
       - name: Test
         run: temper test -b ${{ matrix.backend }}
 
-      # The tour in demos/ must print the same text in every language.
-      # Each language's own tools build it against the output `temper
-      # test` left in temper.out/.
+      # The tour in demos/ must print the same text in every language,
+      # as must the site's examples beside it. Each language's own tools
+      # build them against the output `temper test` left in temper.out/.
       - if: matrix.backend != 'interp'
         name: Tour
         run: python3 demos/run.py ${{ matrix.backend }}

@@ -1,0 +1,139 @@
+$ frob --help
+Frobnicate files.
+
+Usage: frob [OPTIONS] [FILE]...
+
+Arguments:
+  FILE...              Files to frobnicate.
+
+Options:
+  -v, --verbose        Say more.
+  -l, --level <LEVEL>  How hard. [default: 3]
+  -h, --help           Show this help and exit.
+(exit status 0)
+
+$ frob --level=high a.txt
+frob: invalid value 'high' for --level: expected an integer
+Usage: frob [OPTIONS] [FILE]...
+Try 'frob --help' for more information.
+(exit status 2)
+
+$ frob -help
+Frobnicate files.
+
+Usage: frob [OPTIONS] [FILE]...
+
+Arguments:
+  FILE...             Files to frobnicate.
+
+Options:
+  -v, -verbose        Say more.
+  -l, -level <LEVEL>  How hard. [default: 3]
+  -h, -help           Show this help and exit.
+(exit status 0)
+
+$ frob -level=high a.txt
+frob: invalid value 'high' for -level: expected an integer
+Usage: frob [OPTIONS] [FILE]...
+Try 'frob -help' for more information.
+(exit status 2)
+
+$ frob /?
+Frobnicate files.
+
+Usage: frob [OPTIONS] [FILE]...
+
+Arguments:
+  FILE...             Files to frobnicate.
+
+Options:
+  /v, /verbose        Say more.
+  /l, /level:<LEVEL>  How hard. [default: 3]
+  /?, /help           Show this help and exit.
+(exit status 0)
+
+$ frob /level:high a.txt
+frob: invalid value 'high' for /level: expected an integer
+Usage: frob [OPTIONS] [FILE]...
+Try 'frob /?' for more information.
+(exit status 2)
+
+$ minigit -q add a.txt
+(exit status 0)
+
+$ minigit help add
+Add files.
+
+Usage: minigit add [OPTIONS] PATH...
+
+Arguments:
+  PATH...      Files to add.
+
+Options:
+  -f, --force  Add ignored files too.
+  -q, --quiet  Say less.
+  -h, --help   Show this help and exit.
+(exit status 0)
+
+$ minigit ad a.txt
+minigit: unknown command 'ad'; did you mean add?
+Usage: minigit [OPTIONS] COMMAND
+Try 'minigit --help' for more information.
+(exit status 2)
+
+$ minigit add --dir repo a.txt
+minigit: unknown option --dir; --dir belongs to minigit, so give it before add
+Usage: minigit add [OPTIONS] PATH...
+Try 'minigit add --help' for more information.
+(exit status 2)
+
+$ frob --help
+Usage: frob [OPTIONS]
+
+Options:
+  -v, --verbose              Say more.
+      --mode <MODE>          How to go about it. [choices: fast, slow]
+      --out <OUT>            Where to write.
+  -h, --help                 Show this help and exit.
+      --completions <SHELL>  Print a completion script for SHELL and exit.
+                             [choices: bash, zsh, fish, powershell]
+(exit status 0)
+
+$ frob __complete 0 --mo
+--mode	How to go about it.
+:none
+(exit status 0)
+
+$ frob __complete 1 --mode f
+fast
+:none
+(exit status 0)
+
+$ frob --levle 5
+frob: unknown option --levle; did you mean --level?
+Usage: frob [OPTIONS]
+Try 'frob --help' for more information.
+(exit status 2)
+
+$ frob --help
+Frobnicate files.
+
+Aufruf: frob [OPTIONEN]
+
+Optionen:
+  -l, --level <LEVEL>  How hard. [Vorgabe: 3]
+  -h, --help           Show this help and exit.
+(exit status 0)
+
+$ frob --levle 5
+frob: unbekannte Option --levle; meinten Sie --level?
+Aufruf: frob [OPTIONEN]
+Mehr dazu mit 'frob --help'.
+(exit status 2)
+
+$ frob --help
+frob: invalid command spec: unknown message key 'usge'
+Usage: frob [OPTIONS]
+Try 'frob --help' for more information.
+(exit status 2)
+

@@ -26,8 +26,10 @@ Argmas to get it, so the page can't say what Argmas doesn't do:
   exactly `demos/tour/expected.txt`, which CI checks every language's
   tour prints.
 - The sections on styles, subcommands, completions, and messages show
-  `site/examples.py`'s snippets and what they give, from running it with
-  the Python library in `temper.out/py`.
+  each language's snippets from its examples, beside the tour in
+  `demos/tour/` (`examples.py` and the like), which CI checks all print
+  `demos/tour/examples.txt`. What they give is from running Python's
+  with the Python library in `temper.out/py` (`site/examples.py`).
 - The styles' summaries come from `docs/design.md`'s table, the shells'
   install commands from the README's, and how to build each language's
   tour from `demos/README.md`'s.
@@ -60,16 +62,16 @@ PY = ROOT / "temper.out" / "py"
 REPO = "https://github.com/temperlang/argmas"
 
 # Each language's tour, in the site's (alphabetical) order: name, id, its
-# folder in demos/tour/, the program, its line comment, and the file
-# naming the generated library as a dependency.
+# folder in demos/tour/, the tour, the examples, its line comment, and the
+# file naming the generated library as a dependency.
 LANGUAGES = [
-    ("C++", "cpp", "cpp", "tour.cpp", "//", "CMakeLists.txt"),
-    ("C#", "cs", "csharp", "Program.cs", "//", "Tour.csproj"),
-    ("Java", "java", "java", "src/main/java/Tour.java", "//", "build.gradle.kts"),
-    ("JavaScript", "js", "js", "tour.js", "//", "package.json"),
-    ("Lua", "lua", "lua", "tour.lua", "--", "paths.lua"),
-    ("Python", "py", "py", "tour.py", "#", "pyproject.toml"),
-    ("Rust", "rs", "rust", "src/main.rs", "//", "Cargo.toml"),
+    ("C++", "cpp", "cpp", "tour.cpp", "examples.cpp", "//", "CMakeLists.txt"),
+    ("C#", "cs", "csharp", "Program.cs", "examples/Program.cs", "//", "Tour.csproj"),
+    ("Java", "java", "java", "src/main/java/Tour.java", "src/main/java/Examples.java", "//", "build.gradle.kts"),
+    ("JavaScript", "js", "js", "tour.js", "examples.js", "//", "package.json"),
+    ("Lua", "lua", "lua", "tour.lua", "examples.lua", "--", "paths.lua"),
+    ("Python", "py", "py", "tour.py", "examples.py", "#", "pyproject.toml"),
+    ("Rust", "rs", "rust", "src/main.rs", "src/site_examples.rs", "//", "Cargo.toml"),
 ]
 DEFAULT_LANGUAGE = "py"
 
@@ -177,7 +179,7 @@ def term(line, stdout="", stderr="", status=None, label=None, runs_with=None):
     if stderr:
         out.append(f'<span class="stderr">{esc(stderr)}</span>')
     if runs_with:
-        out.append(f'<span class="runs-with"><span class="runs-label">The program runs with</span>\n{esc(runs_with)}</span>')
+        out.append(f'<span class="runs-with"><span class="runs-label">The program runs with, in Python</span>\n{esc(runs_with)}</span>')
     if status is not None:
         out.append(f'<span class="status status-{"ok" if status == 0 else "err"}">exit status {status}</span>')
     aria = esc(label or f"What {line} prints")
@@ -229,14 +231,16 @@ def panel(group, id, body):
     return f'<div class="lang-panel" role="tabpanel" id="panel-{group}-{id}" aria-labelledby="tab-{group}-{id}"{hidden}>{body}</div>'
 
 
-def tour_code(name):
-    """Tabs with each language's snippet `name` from its tour."""
+def lang_code(name, examples=False):
+    """Tabs with each language's snippet `name`, from its tour or, with
+    `examples`, its examples."""
     out = [tabs(name, [(n, id) for n, id, *_ in LANGUAGES])]
-    for lang, id, folder, program, comment, _ in LANGUAGES:
-        path = TOUR / folder / program
-        source = snippet(path, name, comment)
+    for lang, id, folder, tour, example, comment, _ in LANGUAGES:
+        program = example if examples else tour
+        source = snippet(TOUR / folder / program, name, comment)
         link = f'<a href="{REPO}/blob/main/demos/tour/{folder}/{program}"><code>demos/tour/{folder}/{program}</code></a>'
-        out.append(panel(name, id, code_block(source, comment, f"{lang}, from the tour") + f'<p class="run">From {link}</p>'))
+        label = f"{lang}, from the {'examples' if examples else 'tour'}"
+        out.append(panel(name, id, code_block(source, comment, label) + f'<p class="run">From {link}</p>'))
     return "".join(out)
 
 
@@ -322,14 +326,6 @@ def run_examples():
     return json.loads(run.stdout)
 
 
-def example_code(name):
-    source = snippet(SITE / "examples.py", name, "#")
-    return (
-        f'<p class="code-label">In Python <a class="quiet" href="{REPO}/blob/main/site/examples.py">(site/examples.py)</a></p>'
-        + code_block(source, "#", f"The {name} example, in Python")
-    )
-
-
 def md_table(text, heading):
     """The rows of the first Markdown table after a line starting with
     `heading`, as lists of cells, without the divider."""
@@ -373,7 +369,7 @@ def styles_html(found):
             f'<h3 id="style-{name}"><code>{STYLE_NAMES[name]}</code></h3>'
             f'<p class="looks">{inline_md(looks)}<br><span class="common">{inline_md(common)}</span></p>'
             f'<p class="output-label">The same, each way:</p><ul class="forms">{forms}</ul>'
-            f'<p class="output-label">Each runs with:</p>'
+            f'<p class="output-label">Each runs with, in Python:</p>'
             f'<pre class="output values" tabindex="0" aria-label="What each runs with">{esc(values_text(values[0]))}</pre>'
             f'<p class="output-label">Its help, wrapped to {style["help_width"]} columns:</p>{outcome_term(style["help"])}'
             f'<p class="output-label">A mistake:</p>{outcome_term(style["mistake"])}'
@@ -518,7 +514,7 @@ def start_html():
     rows = {row[0]: row for row in md_table(readme, "| Language |")[1:]}
     backends = {"cpp": "cpp", "cs": "csharp", "java": "java", "js": "js", "lua": "lua", "py": "py", "rs": "rust"}
     out = [tabs("start", [(n, id) for n, id, *_ in LANGUAGES])]
-    for lang, id, folder, program, _, manifest in LANGUAGES:
+    for lang, id, folder, _, _, _, manifest in LANGUAGES:
         if lang not in rows:
             raise SystemExit(f"demos/README.md's table has no {lang}.")
         if not (TOUR / folder / manifest).exists():
@@ -605,22 +601,22 @@ def main():
 
     page = (SITE / "index.html").read_text(encoding="utf-8")
     parts = {
-        "HERO_CODE": tour_code("declare"),
+        "HERO_CODE": lang_code("declare"),
         "HERO_RUNS": hero(runs),
         **try_it(runs, first),
         "CASE_COUNT": str(len(runs)),
-        "STYLES_CODE": example_code("styles"),
+        "STYLES_CODE": lang_code("styles", examples=True),
         "STYLES": styles_html(examples["styles"]),
-        "SUBCOMMANDS_CODE": example_code("subcommands"),
+        "SUBCOMMANDS_CODE": lang_code("subcommands", examples=True),
         "SUBCOMMANDS": subcommands_html(examples["subcommands"]),
-        "COMPLETIONS_CODE": example_code("completions"),
+        "COMPLETIONS_CODE": lang_code("completions", examples=True),
         "COMPLETIONS_DEMO": completion_demo(examples["completions"]["answers"]),
         "COMPLETIONS_ANSWERS": completion_answers(examples["completions"]["answers"]),
         "COMPLETIONS_INSTALL": install_table(),
         "COMPLETIONS_SCRIPTS": scripts_html(examples["completions"]["scripts"]),
-        "MESSAGES_CODE": example_code("messages"),
+        "MESSAGES_CODE": lang_code("messages", examples=True),
         **messages_html(examples["messages"]),
-        "RESULTS_CODE": tour_code("results"),
+        "RESULTS_CODE": lang_code("results"),
         "START": start_html(),
     }
     for key, value in parts.items():

@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <!-- Run on newer .NET runtimes too, such as CI's 8 and later. -->
     <RollForward>Major</RollForward>
+    <!-- The site's examples are a project of their own. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);examples/**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
     <!-- Built by `temper build -b csharp` at the repo's top. -->

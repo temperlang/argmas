@@ -262,8 +262,8 @@ needs `cargo`):
     uv run tests/reference/run.py [-v] [PARSER ...]
 
 The [site](https://temperlang.github.io/argmas/) is built from the
-tours and `site/examples.py`, running the JavaScript and Python
-libraries for everything Argmas prints on it (see `site/build.py`):
+tours and their examples, running the JavaScript and Python libraries
+for everything Argmas prints on it (see `site/build.py`):
 
     npm ci --prefix site
     temper build -b js -b py
