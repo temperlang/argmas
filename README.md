@@ -153,7 +153,10 @@ print and exit with status 0, and `ArgError` to print to standard error
 and exit with status 2. Parsing touches nothing outside: the program
 passes the arguments and, for environment variables, an `Environment`.
 The [design](docs/design.md) has how each corner case is decided,
-from `-` alone to negative numbers.
+from `-` alone to negative numbers. To pass the values around as one
+object, a program builds its own record, dataclass, or struct from
+`args`, each field still typed by its handle; the design says
+[why](docs/design.md#typed-results) Argmas doesn't fill one itself.
 
 ## Messages and translations
 

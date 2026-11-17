@@ -64,23 +64,66 @@ when (cli.parse(argv, env)) {
   program implements (or `MapEnvironment` over a map), so parsing
   touches nothing outside.
 
-### Typed results through `@json`
+### Typed results
 
-Not built yet. For a single typed result object, Argmas can turn the parsed arguments into
-the same tree `@json` decodes, so a `@json` class gets filled in directly:
+Decided 2026-11-17: handles stay the one way to read values, and a
+program wanting one object to pass around builds it from `args` in
+its own language, as an ordinary constructor call:
 
 ```temper
-@json class Options {
-  public verbose: Boolean;
-  public level: Int;
-  public files: List<String>;
-}
-let options = cli.parseInto(argv, Options.jsonAdapter()) orelse ...;
+class Options(public verbose: Int, public level: Int, public files: List<String>) {}
+let options = new Options(args.get(verbose), args.get(level), args.get(files));
 ```
 
-This reuses machinery Temper already has. Help text still comes from the
-spec, since classes don't carry their docs at run time (see "Later:
-metaprogramming").
+```python
+@dataclass
+class Options:
+    verbose: int
+    level: int
+    files: list[str]
+
+options = Options(args.get_value(verbose), args.get_value(level), list(args.get_value(files)))
+```
+
+```java
+record Options(int verbose, int level, List<String> files) {}
+var options = new Options(args.getValue(verbose), args.getValue(level), args.getValue(files));
+```
+
+That's the language's own record, dataclass, or struct, every field
+checked when the program compiles. Two ways for Argmas to fill such an
+object were tried in scratch builds with tempest (b2425cd) and
+dropped:
+
+- **`parseInto` with `@json`:** the parsed arguments written as a JSON
+  tree (`JsonSyntaxTreeProducer`) and decoded by a class's
+  `jsonAdapter()`. It works in Temper, but only for classes written in
+  Temper: `@json` generates adapters for Temper classes, so a program
+  in Python, Java, or Rust would implement `JsonAdapter` by hand
+  (`decode_from_json(t, ic)`, walking `JsonObject`s), which is more
+  code than reading handles. Even in Temper it gives up what handles
+  give: each field is declared twice (spec and class) and joined by
+  name (`dry-run` needs `@jsonName`), so a misspelling or a type that
+  doesn't match fails when parsing rather than compiling, and only on
+  runs that reach that subcommand; subcommands would need a `@json`
+  sealed interface with a `@jsonExtra` tag per command; and every
+  backend's Argmas would depend on `std/json`.
+- **A result type filled by a declared mapping:** each argument
+  declared with a setter, `cli.flag({ ... }, fn (o: Options, v:
+  Boolean): Void { o.verbose = v })`, and `parse` filling a mutable
+  object the program passes. The setters translate (a `BiConsumer`
+  lambda in Java, a lambda in C++, a local function in Python, C#, and
+  Lua), but each field is named three times, the class needs
+  defaults and mutable fields, Python's `lambda` can't assign so each
+  setter is a `def`, and in Rust the object passes by value as `R:
+  Clone + Send + Sync`, so a program's own struct needs interior
+  mutability to be filled.
+
+Neither is better than the constructor call above in any language, so
+Argmas adds neither. A result type made from one declaration waits
+for [metaprogramming](#later-metaprogramming), where derive style
+would declare the class and the spec together. Help text comes from
+the spec either way.
 
 ### Subcommands
 
@@ -714,7 +757,9 @@ of these in Temper, which are ideas, not plans:
 - **A built-in derive decorator** like `@json`, generating the parser per
   backend.
 
-The typed-handle API stays either way; derive style would build on it.
+The typed-handle API stays either way; derive style would build on it,
+and would give the one-declaration result type that
+[typed results](#typed-results) leaves for now.
 
 ## Temper constraints met so far
 
@@ -778,8 +823,6 @@ the API, and the choice made for each:
   Japanese, and Korean ones) take more room than counted.
 - Value types beyond the basics: dates and durations need a format; paths
   need per-platform rules (Windows drive letters, `~`).
-- Whether `parseInto` with `@json` covers enough, or a result type per
-  command is better.
 - Config files (TOML, INI) as another layer under the environment, or out
   of scope.
 - How much terminal handling (color, width) belongs here, and how much in
@@ -796,7 +839,9 @@ In this order, as agreed (2026-11-16):
    and clap, in `tests/reference/`).
 4. Small open items (done: flags that are `on`, `ints64`, no prefix
    matching, and unquoting on the line in completions).
-5. `parseInto` with `@json`, or a result type per command.
+5. Typed results (decided: no `parseInto` or result type per command;
+   handles stay the one way, and a program builds its own record from
+   them, as [typed results](#typed-results) explains).
 
 Later: display width, date, duration, and path value types,
 translations through a Temper library for internationalization, and
