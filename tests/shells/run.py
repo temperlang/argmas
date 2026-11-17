@@ -128,9 +128,15 @@ def typed_words(line):
 def normalized(candidates, shell=None):
     out = set()
     for c in candidates:
-        if shell == "fish":
-            # fish shows candidates as it would insert them, escaped.
+        if shell in ("fish", "zsh"):
+            # fish and zsh show candidates as they'd insert them, with
+            # backslash escapes (`delta\ file.txt`).
             c = re.sub(r"\\(.)", r"\1", c)
+        if shell == "powershell":
+            # PowerShell quotes a path that needs it in single quotes,
+            # anywhere in the word (`--out='./delta file.txt'`), doubling
+            # a quote inside; the argument it passes is the text inside.
+            c = re.sub(r"'((?:[^']|'')*)'?", lambda m: m[1].replace("''", "'"), c)
         c = c.strip().strip("'\"")
         c = re.sub(r"(^|[=:])\.[/\\]", r"\1", c)
         c = c.rstrip("/\\")
