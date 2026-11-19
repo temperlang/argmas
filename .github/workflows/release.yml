@@ -35,7 +35,7 @@ concurrency:
 env:
   # test.yml's, which `check` requires, so a release is built by the
   # compiler CI tested it with.
-  TEMPEST_COMMIT: b2425cde00751867eccd90b13e58eadd1336dda3
+  TEMPEST_COMMIT: 709467bfd51234d1df388805ed4e358766a01b23
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
 
 jobs:
@@ -81,7 +81,7 @@ jobs:
       - if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: temperlang/tempest
+          repository: temperlang/temper
           ref: ${{ env.TEMPEST_COMMIT }}
           path: tempest
           persist-credentials: false
@@ -183,7 +183,7 @@ jobs:
         run: |
           sha256sum -c SHA256SUMS
           cat > "$RUNNER_TEMP/notes.md" <<EOF
-          Argmas $VERSION, built from $GITHUB_SHA ([the run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)) with Temper's compiler at temperlang/tempest@$TEMPEST_COMMIT.
+          Argmas $VERSION, built from $GITHUB_SHA ([the run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)) with Temper's compiler at temperlang/temper@$TEMPEST_COMMIT.
 
           Beta, as all Temper libraries are until Temper's translations reach 1.0. Each language's package comes with Temper's runtime (temper-core) and std at the compiler's version, so it installs offline; the README's [Releases](https://github.com/$GITHUB_REPOSITORY#releases) section says how.
 

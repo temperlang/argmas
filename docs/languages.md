@@ -196,6 +196,5 @@ user-defined `@operator("==")` to that method rather than to each
 language's own equality (C#'s and C++'s `==`, Java's `equals`, Lua's
 `__eq`); that's a planned tempest fix, after which `args.command ==
 add` reads naturally wherever the language allows it (JavaScript has
-no user-defined equality). Generated code also carries the tests'
-helpers: C++'s `init.hpp` includes std's testing header, and Rust's
-crate warns about unused test helpers when built as a dependency.
+no user-defined equality). C++'s generated `init.hpp` still includes
+std's testing header, though the tests' helpers now stay in test code.
