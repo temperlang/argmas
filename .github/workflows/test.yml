@@ -3,8 +3,8 @@ name: test
 # Argmas's Temper tests on every backend, the tour in each language
 # (demos/), shell completions in real shells (tests/shells/), and
 # parsing against reference parsers (tests/reference/), with Temper's
-# new compiler (written in Rust). Also builds the project site (site/),
-# and publishes it to GitHub Pages from main.
+# compiler built from source at the pinned TEMPEST_COMMIT. Also builds
+# the project site (site/), and publishes it to GitHub Pages from main.
 
 on:
   push:
