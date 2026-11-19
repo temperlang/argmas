@@ -191,10 +191,10 @@ In Argmas's API:
 In Temper's translations, not Argmas: Lua's and C++'s positional-only
 bags; Rust's `Arc<String>` setters; C#'s `Optional` for `getMaybe`; and
 JavaScript's `new` taking positional settings. Commands compare with
-an `eq` method outside Python and Rust because tempest translates a
+an `eq` method outside Python and Rust because Temper translates a
 user-defined `@operator("==")` to that method rather than to each
 language's own equality (C#'s and C++'s `==`, Java's `equals`, Lua's
-`__eq`); that's a planned tempest fix, after which `args.command ==
+`__eq`); that's a planned Temper fix, after which `args.command ==
 add` reads naturally wherever the language allows it (JavaScript has
 no user-defined equality). C++'s generated `init.hpp` still includes
 std's testing header, though the tests' helpers now stay in test code.

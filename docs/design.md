@@ -92,8 +92,8 @@ var options = new Options(args.getValue(verbose), args.getValue(level), args.get
 
 That's the language's own record, dataclass, or struct, every field
 checked when the program compiles. Two ways for Argmas to fill such an
-object were tried in scratch builds with tempest (b2425cd) and
-dropped:
+object were tried in scratch builds with Temper's new compiler (then
+called tempest, at b2425cd) and dropped:
 
 - **`parseInto` with `@json`:** the parsed arguments written as a JSON
   tree (`JsonSyntaxTreeProducer`) and decoded by a class's
@@ -763,8 +763,8 @@ and would give the one-declaration result type that
 
 ## Temper constraints met so far
 
-Limits of today's Temper (with tempest, the new compiler) that shaped
-the API, and the choice made for each:
+Limits of today's Temper (with its new compiler) that shaped the API,
+and the choice made for each:
 
 - **Type parameters can't be nullable**, so one `Arg<T>` can't cover an
   option that may be absent (`T` would be `Int?`). Handles split into
@@ -776,10 +776,11 @@ the API, and the choice made for each:
   properties, and counted flags are `count`, not a `counted` setting.
 - **Bags are constructor calls**, so `new Command({ ... })` passes a
   `CommandSpec` bag as `Command`'s one parameter, and each method's bag
-  class comes from its parameter's type. Tempest target-types bags; the
-  older Kotlin compiler matches property names instead, and since
-  `FlagSpec` and `OptionSpec` share theirs (as do `CommandSpec` and
-  `SubcommandSpec`), it may need `{ class: FlagSpec, ... }`.
+  class comes from its parameter's type. Temper's new compiler
+  target-types bags; the older Kotlin compiler matches property names
+  instead, and since `FlagSpec` and `OptionSpec` share theirs (as do
+  `CommandSpec` and `SubcommandSpec`), it may need
+  `{ class: FlagSpec, ... }`.
 - **No casts to a type parameter**, so a parsed result keeps each
   value's text, already checked, and a handle parses it again when read.
 - **`int`, `float`, and `string` are keywords in several target
@@ -789,7 +790,7 @@ the API, and the choice made for each:
   (`Param`, `Found`, `Command.findLong`) is public, documented as for
   value types and tools.
 - **A `when` over the sealed `ParseResult`** that produces a value still
-  needs an `else` branch with tempest.
+  needs an `else` branch with Temper's new compiler.
 - **No identity comparison of objects**, and a class's `==` is its
   own, so `Command` defines `==` (with `@operator("==")`) as having
   the same path (`frob remote add`). That lets a program match
@@ -815,9 +816,9 @@ the API, and the choice made for each:
   rm` both under `remote`). Deferred until a program needs it;
   `args.command.ancestors` covers it meanwhile.
 - `args.command == add` reads poorly in C# and Java (`Eq`, `eq`) only
-  because tempest translates a user-defined `@operator("==")` to an
+  because Temper translates a user-defined `@operator("==")` to an
   `eq` method rather than to the language's own equality. That's a
-  planned tempest fix, so Argmas keeps `==` rather than adding a
+  planned Temper fix, so Argmas keeps `==` rather than adding a
   method such as `args.ran(add)`.
 - Help counts columns in code points, so wide characters (most Chinese,
   Japanese, and Korean ones) take more room than counted.
