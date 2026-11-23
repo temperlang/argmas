@@ -240,6 +240,35 @@ spec's completer, if any, or else as its value type says.
       }
     }
 
+A `Param`'s settings as the methods declaring arguments give them to
+`addParam`, with defaults, so each names only what differs. It's
+internal; `Param` keeps its own constructor. An option's `required`,
+`repeated`, and `defaultText` are `var`, set by the method that
+declares it.
+
+`max` has no default because a default also replaces an explicit
+`null`, which here means no limit; flags and options give 0.
+
+    class ParamSettings(
+      public kind: ParamKind,
+      public name: String,
+      public checker: Checker,
+      public max: Int?,
+      public short: String? = null,
+      public help: String = "",
+      public env: String? = null,
+      public valueName: String = "",
+      public negatable: Boolean = false,
+      public on: Boolean = false,
+      public inherited: Boolean = false,
+      public var required: Boolean = false,
+      public var repeated: Boolean = false,
+      public min: Int = 0,
+      public var defaultText: String? = null,
+      public choices: List<String> = [],
+      public completer: Completer? = null,
+    ) {}
+
 The kinds of argument, as named singletons.
 
     @auto("==")
@@ -434,7 +463,11 @@ A flag: true when given, false when not (or as its environment
 variable says), or true when not given if it's `on`.
 
       public flag(spec: FlagSpec): Arg<Boolean> {
-        new Flag(addParam(ParamKind.flag, spec.name, spec.short, spec.help, spec.env, "", spec.negatable || spec.on, spec.on, spec.inherited, false, false, 0, 0, null, [], new NoValueChecker("expected.boolean"), null))
+        new Flag(addParam({
+          kind: ParamKind.flag, name: spec.name, checker: new NoValueChecker("expected.boolean"), max: 0,
+          short: spec.short, help: spec.help, env: spec.env,
+          negatable: spec.negatable || spec.on, on: spec.on, inherited: spec.inherited,
+        }))
       }
 
 A counted flag: the number of times it's given, so `-vvv` is 3.
@@ -443,41 +476,52 @@ A counted flag: the number of times it's given, so `-vvv` is 3.
         if (spec.on) {
           specProblems.add("counted flag --${spec.name} can't be on");
         }
-        new Counter(addParam(ParamKind.count, spec.name, spec.short, spec.help, spec.env, "", spec.negatable, false, spec.inherited, false, true, 0, 0, null, [], new NoValueChecker("expected.count"), null))
+        new Counter(addParam({
+          kind: ParamKind.count, name: spec.name, checker: new NoValueChecker("expected.count"), max: 0,
+          short: spec.short, help: spec.help, env: spec.env,
+          negatable: spec.negatable, inherited: spec.inherited, repeated: true,
+        }))
       }
 
 An option that may be left out; its value is null then. Given more
 than once, the last value wins.
 
       public option<T>(type: ValueType<T>, spec: OptionSpec): MaybeArg<T> {
-        new MaybeValue<T>(optionParam(type, spec, false, false, null), type)
+        new MaybeValue<T>(addParam(optionSettings(type, spec)), type)
       }
 
 An option with a default, used when it's given neither as an argument
 nor in its environment variable.
 
       public optionOr<T>(type: ValueType<T>, fallback: T, spec: OptionSpec): Arg<T> {
-        new Value<T>(optionParam(type, spec, false, false, type.format(fallback)), type, fallback)
+        let settings = optionSettings(type, spec);
+        settings.defaultText = type.format(fallback);
+        new Value<T>(addParam(settings), type, fallback)
       }
 
 An option that must be given, as an argument or in its environment
 variable.
 
       public required<T>(type: ValueType<T>, spec: OptionSpec): Arg<T> {
-        new Value<T>(optionParam(type, spec, true, false, null), type, null)
+        let settings = optionSettings(type, spec);
+        settings.required = true;
+        new Value<T>(addParam(settings), type, null)
       }
 
 An option that may be given any number of times, keeping every value.
 Its environment variable gives one value.
 
       public repeated<T>(type: ValueType<T>, spec: OptionSpec): Arg<List<T>> {
-        new Values<T>(optionParam(type, spec, false, true, null), type)
+        let settings = optionSettings(type, spec);
+        settings.repeated = true;
+        new Values<T>(addParam(settings), type)
       }
 
 One positional argument, which must be there.
 
       public positional<T>(type: ValueType<T>, spec: PositionalSpec): Arg<T> {
-        new Value<T>(positionalParam(type, spec.name, spec.help, 1, 1, spec.completer), type, null)
+        let one: PositionalSpec = { name: spec.name, help: spec.help, min: 1, max: 1, completer: spec.completer };
+        new Value<T>(positionalParam(type, one), type, null)
       }
 
 Positional arguments, from `spec.min` to `spec.max`. With several
@@ -485,29 +529,43 @@ lists, each gets its minimum, and the rest go to the earliest that
 takes more, so `SRC... DEST` works.
 
       public positionals<T>(type: ValueType<T>, spec: PositionalSpec): Arg<List<T>> {
-        new Values<T>(positionalParam(type, spec.name, spec.help, spec.min, spec.max, spec.completer), type)
+        new Values<T>(positionalParam(type, spec), type)
       }
 
-      private optionParam<T>(type: ValueType<T>, spec: OptionSpec, required: Boolean, repeated: Boolean, defaultText: String?): Param {
-        let valueName = spec.valueName ?? asciiUpper(spec.name);
-        addParam(ParamKind.option, spec.name, spec.short, spec.help, spec.env, valueName, false, false, spec.inherited, required, repeated, 0, 0, defaultText, type.choices, new TypeChecker<T>(type), spec.completer)
+An option's settings, before its method sets whether it's required or
+repeated, or its default.
+
+      private optionSettings<T>(type: ValueType<T>, spec: OptionSpec): ParamSettings {
+        {
+          class: ParamSettings,
+          kind: ParamKind.option, name: spec.name, checker: new TypeChecker<T>(type), max: 0,
+          short: spec.short, help: spec.help, env: spec.env,
+          valueName: spec.valueName ?? asciiUpper(spec.name), inherited: spec.inherited,
+          choices: type.choices, completer: spec.completer,
+        }
       }
 
-      private positionalParam<T>(type: ValueType<T>, name: String, help: String, min: Int, max: Int?, completer: Completer?): Param {
+      private positionalParam<T>(type: ValueType<T>, spec: PositionalSpec): Param {
+        let name = spec.name;
+        let min = spec.min;
+        let max = spec.max;
         if (min < 0 || (max != null && max < min) || max == 0) {
           specProblems.add("positional ${name} allows no count of arguments");
         }
-        addParam(ParamKind.positional, name, null, help, null, name, false, false, false, min > 0, true, min, max, null, type.choices, new TypeChecker<T>(type), completer)
+        addParam({
+          kind: ParamKind.positional, name: name, checker: new TypeChecker<T>(type),
+          help: spec.help, valueName: name, required: min > 0, repeated: true,
+          min: min, max: max, choices: type.choices, completer: spec.completer,
+        })
       }
 
-      private addParam(
-        kind: ParamKind, name: String, short: String?, help: String, env: String?,
-        valueName: String, negatable: Boolean, on: Boolean, inherited: Boolean, required: Boolean,
-        repeated: Boolean, min: Int, max: Int?, defaultText: String?,
-        choiceList: List<String>, checker: Checker, completer: Completer?,
-      ): Param {
-        checkNames(kind, name, short);
-        let p = new Param(kind, name, short, help, env, valueName, negatable, on, inherited, required, repeated, min, max, defaultText, choiceList, params.length, checker, completer, this);
+      private addParam(s: ParamSettings): Param {
+        checkNames(s.kind, s.name, s.short);
+        let p = new Param(
+          s.kind, s.name, s.short, s.help, s.env, s.valueName, s.negatable, s.on, s.inherited,
+          s.required, s.repeated, s.min, s.max, s.defaultText, s.choices,
+          params.length, s.checker, s.completer, this,
+        );
         params.add(p);
         p
       }
@@ -710,7 +768,7 @@ subcommand and returns its own `Command`, with its own arguments, help,
 errors, and, if it likes, subcommands of its own.
 
       public subcommand(spec: SubcommandSpec): Command {
-        let sub = new Command(new CommandSpec(spec.name, spec.about, spec.version, spec.commandOptional, Style.gnu, null, false));
+        let sub = new Command({ class: CommandSpec, name: spec.name, about: spec.about, version: spec.version, commandOptional: spec.commandOptional });
         sub.up = this;
         sub.otherNames = spec.aliases;
         sub.hiddenNames = spec.hiddenAliases;
